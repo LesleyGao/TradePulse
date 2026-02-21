@@ -897,7 +897,7 @@ export default function App() {
                                     onClick={() => hasFills && setExpandedTradeKey((k) => (k === tradeKey ? null : tradeKey))}
                                     disabled={!hasFills}
                                     className={cn(
-                                      'inline-flex items-center gap-1.5 text-left font-mono text-sm font-semibold text-stone-900',
+                                      'inline-flex items-center gap-1.5 text-left font-mono text-sm text-stone-900',
                                       hasFills && 'hover:text-stone-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-1 rounded',
                                       !hasFills && 'cursor-default'
                                     )}
