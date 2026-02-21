@@ -1,6 +1,9 @@
 import Papa from 'papaparse';
 import { format, parse, isValid } from 'date-fns';
 
+/** US equity option contract size (1 contract = 100 shares). */
+const OPTION_CONTRACT_MULTIPLIER = 100;
+
 export interface Trade {
   date: Date;
   symbol: string;
@@ -19,82 +22,192 @@ export interface PnlPoint {
   sma20?: number;
 }
 
-export const parseBrokerCsv = (csvString: string): Trade[] => {
-  const { data } = Papa.parse(csvString, {
+function findCol(row: Record<string, unknown>, aliases: string[]): string | null {
+  const keys = Object.keys(row);
+  const raw = (v: unknown) => (v != null ? String(v).trim() : '');
+  for (const alias of aliases) {
+    const key = keys.find((k) => k.toLowerCase() === alias.toLowerCase());
+    if (key) {
+      const v = raw(row[key]);
+      if (v !== '') return v;
+    }
+  }
+  for (const alias of aliases) {
+    const key = keys.find((k) => k.toLowerCase().includes(alias.toLowerCase()));
+    if (key) {
+      const v = raw(row[key]);
+      if (v !== '') return v;
+    }
+  }
+  return null;
+}
+
+/** Find any column whose name contains one of the fragments (for flexible matching). */
+function findColByFragment(row: Record<string, unknown>, fragments: string[]): string | null {
+  const keys = Object.keys(row);
+  const raw = (v: unknown) => (v != null ? String(v).trim() : '');
+  for (const frag of fragments) {
+    const key = keys.find((k) => k.toLowerCase().includes(frag.toLowerCase()));
+    if (key) {
+      const v = raw(row[key]);
+      if (v !== '' && v !== '-' && v.toLowerCase() !== 'n/a') return v;
+    }
+  }
+  return null;
+}
+
+/** Parse number from CSV; (1,234.56) or -1,234.56 → number. */
+function parseNum(val: unknown): number {
+  if (val == null) return 0;
+  const s = String(val).trim();
+  const wrapped = /^\((.+)\)$/.exec(s);
+  const toParse = wrapped ? `-${wrapped[1]}` : s;
+  const cleaned = toParse.replace(/,/g, '').replace(/[^0-9.-]/g, '');
+  if (cleaned === '' || cleaned === '-') return 0;
+  const n = parseFloat(cleaned);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function sanitizeNum(val: unknown): string {
+  if (val == null) return '0';
+  const s = String(val).trim();
+  const wrapped = /^\((.+)\)$/.exec(s);
+  const toParse = wrapped ? `-${wrapped[1]}` : s;
+  const out = toParse.replace(/,/g, '').replace(/[^0-9.-]/g, '');
+  return out === '' || out === '-' ? '0' : out;
+}
+
+function parseDate(dateStr: string): Date | null {
+  const cleaned = dateStr.replace(/\s+[A-Z]{3,4}$/i, '').trim();
+  let d = new Date(cleaned);
+  if (isValid(d)) return d;
+  const formats = [
+    'MM/dd/yyyy HH:mm:ss',
+    'MM/dd/yyyy H:mm:ss',
+    'MM/dd/yyyy HH:mm',
+    'MM/dd/yyyy',
+    'yyyy-MM-dd HH:mm:ss',
+    'yyyy-MM-dd',
+    'M/d/yyyy H:mm:ss',
+    'M/d/yyyy',
+  ];
+  for (const f of formats) {
+    try {
+      const p = parse(cleaned, f, new Date());
+      if (isValid(p)) return p;
+    } catch {
+      // continue
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse a Webull options order list CSV (or similar broker CSV).
+ * Supports: Filled Time, Date, Symbol, Side, Action, Filled/Qty, Avg Price/Price, Total, Realized P/L.
+ */
+export function parseBrokerCsv(csvString: string): Trade[] {
+  const trimmed = csvString.startsWith('\uFEFF') ? csvString.slice(1) : csvString;
+  const { data } = Papa.parse(trimmed, {
     header: true,
     skipEmptyLines: true,
+    transformHeader: (h) => h.trim(),
   });
 
   const trades: Trade[] = [];
+  const rows = Array.isArray(data) ? data : [];
 
-  // Helper to find column by common names
-  const findCol = (row: any, aliases: string[]) => {
-    const keys = Object.keys(row);
-    // Try exact matches first
-    for (const alias of aliases) {
-      const found = keys.find(k => k.toLowerCase() === alias.toLowerCase());
-      if (found) return row[found];
-    }
-    // Try partial matches
-    for (const alias of aliases) {
-      const found = keys.find(k => k.toLowerCase().includes(alias.toLowerCase()));
-      if (found) return row[found];
-    }
-    return null;
-  };
+  for (const row of rows as Record<string, unknown>[]) {
+    const dateStr = findCol(row, [
+      'filled time',
+      'time',
+      'date',
+      'trade date',
+      'timestamp',
+      'execution time',
+    ]);
+    if (!dateStr) continue;
 
-  const sanitizeNum = (val: any): string => {
-    if (typeof val !== 'string') return String(val || '0');
-    // Remove @, $, commas, and other non-numeric chars except . and -
-    return val.replace(/[^0-9.-]/g, '') || '0';
-  };
+    const date = parseDate(dateStr);
+    if (!date) continue;
 
-  (data as any[]).forEach((row) => {
-    const dateStr = findCol(row, ['filled time', 'date', 'time', 'timestamp', 'trade date']);
-    const symbol = findCol(row, ['symbol', 'ticker', 'asset', 'instrument', 'name']) || 'UNKNOWN';
-    const action = findCol(row, ['side', 'action', 'type', 'description']) || '';
-    const qty = parseFloat(sanitizeNum(findCol(row, ['filled', 'quantity', 'qty', 'shares', 'amount', 'total qty'])));
-    const price = parseFloat(sanitizeNum(findCol(row, ['avg price', 'price', 'execution price'])));
-    const totalVal = findCol(row, ['total', 'net amount', 'value', 'proceeds', 'total amount']);
-    const total = totalVal ? parseFloat(sanitizeNum(totalVal)) : 0;
+    const symbol =
+      findCol(row, ['symbol', 'ticker', 'underlying', 'instrument', 'name']) ?? 'UNKNOWN';
+    const action =
+      findCol(row, ['side', 'action', 'type', 'direction', 'description']) ??
+      findColByFragment(row, ['side', 'action', 'direction', 'buy', 'sell']) ??
+      '';
 
-    if (!dateStr || isNaN(qty) || isNaN(price) || qty === 0) return;
+    const qtyRaw = findCol(row, [
+      'filled',
+      'filled qty',
+      'quantity',
+      'qty',
+      'shares',
+      'contracts',
+      'filled quantity',
+      'size',
+    ]);
+    const qty = parseNum(qtyRaw);
+    if (qty === 0) continue;
 
-    // Try parsing date
-    // Webull format: 02/18/2026 09:44:29 EST
-    // Strip timezone if present for better parsing
-    const cleanDateStr = dateStr.replace(/\s[A-Z]{3,4}$/, '');
-    let date = new Date(cleanDateStr);
-    
-    if (!isValid(date)) {
-      // Try some common formats if standard Date fails
-      const formats = ['MM/dd/yyyy HH:mm:ss', 'MM/dd/yyyy', 'dd/MM/yyyy', 'yyyy-MM-dd', 'MM/dd/yy'];
-      for (const f of formats) {
-        try {
-          const p = parse(cleanDateStr, f, new Date());
-          if (isValid(p)) {
-            date = p;
-            break;
-          }
-        } catch (e) {}
-      }
-    }
+    const priceRaw = findCol(row, [
+      'avg price',
+      'average price',
+      'price',
+      'execution price',
+      'fill price',
+      'last price',
+      'premium',
+      'option price',
+    ]);
+    const price = priceRaw != null && priceRaw !== '' ? parseNum(priceRaw) : NaN;
+    if (Number.isNaN(price)) continue;
 
-    if (!isValid(date)) return;
+    const totalRaw =
+      findCol(row, [
+        'total',
+        'net amount',
+        'value',
+        'proceeds',
+        'total amount',
+        'amount',
+        'net value',
+        'cash flow',
+      ]) ?? findColByFragment(row, ['total', 'amount', 'value', 'proceeds', 'net']);
+    const total = totalRaw ? parseNum(totalRaw) : NaN;
 
-    // Improved type detection
     let type: 'BUY' | 'SELL' = 'BUY';
-    const actionUpper = action.toUpperCase();
-    if (actionUpper.includes('SELL') || actionUpper.includes('SHORT') || actionUpper.includes('SL')) {
+    const a = action.toUpperCase();
+    if (a.includes('SELL') || a.includes('SHORT') || a.includes('CLOSE') || a === 'S') {
       type = 'SELL';
-    } else if (actionUpper.includes('BUY') || actionUpper.includes('LONG') || actionUpper.includes('BY')) {
+    } else if (a.includes('BUY') || a.includes('LONG') || a.includes('OPEN') || a === 'B') {
       type = 'BUY';
-    } else if (total > 0) {
-      type = 'SELL';
+    } else if (!Number.isNaN(total) && total !== 0) {
+      type = total > 0 ? 'SELL' : 'BUY';
     }
 
-    const pnlVal = findCol(row, ['realized p/l', 'profit', 'pnl', 'gain/loss', 'realized profit']);
-    const realizedPnl = pnlVal ? parseFloat(sanitizeNum(pnlVal)) : 0;
+    const pnlRaw =
+      findCol(row, [
+        'realized p/l',
+        'realized p&l',
+        'realized pnl',
+        'profit',
+        'pnl',
+        'gain/loss',
+        'realized profit',
+        'realized gain',
+        'closed p/l',
+        'closed p&l',
+      ]) ?? findColByFragment(row, ['realized', 'profit', 'pnl', 'gain', 'loss', 'p/l', 'p&l', 'closed']);
+    const realizedPnl = pnlRaw ? parseNum(pnlRaw) : 0;
+
+    const optionAmount = Math.abs(qty) * price * OPTION_CONTRACT_MULTIPLIER;
+    const amount =
+      !Number.isNaN(total) && total !== 0
+        ? total
+        : optionAmount;
+    const finalAmount = amount !== 0 ? amount : optionAmount;
 
     trades.push({
       date,
@@ -102,62 +215,61 @@ export const parseBrokerCsv = (csvString: string): Trade[] => {
       type,
       quantity: Math.abs(qty),
       price,
-      amount: !isNaN(total) && total !== 0 ? total : (qty * price),
-      pnl: !isNaN(realizedPnl) ? realizedPnl : 0
+      amount: finalAmount,
+      pnl: realizedPnl,
     });
-  });
+  }
 
-  // Sort trades by date
   return trades.sort((a, b) => a.date.getTime() - b.date.getTime());
-};
+}
 
-export const calculatePnl = (trades: Trade[]): PnlPoint[] => {
-  const pnlPoints: PnlPoint[] = [];
+/**
+ * Compute realized P/L per day from option contracts.
+ * Daily PnL = (sum of SELL proceeds) − (sum of BUY cost) for that day.
+ * Always uses contracts × price × 100 per trade (option contract multiplier).
+ */
+export function calculatePnl(trades: Trade[]): PnlPoint[] {
+  if (trades.length === 0) return [];
+
+  const byDay: Record<string, Trade[]> = {};
+  for (const t of trades) {
+    const day = format(t.date, 'yyyy-MM-dd');
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push(t);
+  }
+
+  const days = Object.keys(byDay).sort();
+  const points: PnlPoint[] = [];
   let cumulative = 0;
-  
-  // Group trades by date to show daily PNL
-  const dailyGroups: { [key: string]: Trade[] } = {};
-  
-  trades.forEach(trade => {
-    const day = format(trade.date, 'yyyy-MM-dd');
-    if (!dailyGroups[day]) dailyGroups[day] = [];
-    dailyGroups[day].push(trade);
-  });
 
-  const sortedDays = Object.keys(dailyGroups).sort();
-
-  sortedDays.forEach((day, index) => {
-    const dayTrades = dailyGroups[day];
-    
-    let dayPnl = 0;
-    dayTrades.forEach(t => {
-      if (t.pnl !== 0) {
-        dayPnl += t.pnl;
-      } else {
-        // Fallback: if no PNL column, we assume SELL - BUY for the same symbol
-        // This is still very simplified but better than nothing
-        dayPnl += t.type === 'SELL' ? Math.abs(t.amount) : -Math.abs(t.amount);
-      }
-    });
+  for (const day of days) {
+    const dayTrades = byDay[day];
+    const premium = (t: Trade) =>
+      t.quantity * t.price * OPTION_CONTRACT_MULTIPLIER;
+    const sellPremium = dayTrades
+      .filter((t) => t.type === 'SELL')
+      .reduce((s, t) => s + premium(t), 0);
+    const buyPremium = dayTrades
+      .filter((t) => t.type === 'BUY')
+      .reduce((s, t) => s + premium(t), 0);
+    const dayPnl = sellPremium - buyPremium;
 
     cumulative += dayPnl;
-    
-    pnlPoints.push({
+    points.push({
       date: day,
-      timestamp: new Date(day).getTime(),
+      timestamp: new Date(day + 'T12:00:00').getTime(),
       pnl: dayPnl,
       cumulativePnl: cumulative,
     });
-  });
+  }
 
-  // Calculate 20SMA
-  for (let i = 0; i < pnlPoints.length; i++) {
+  for (let i = 0; i < points.length; i++) {
     if (i >= 19) {
-      const slice = pnlPoints.slice(i - 19, i + 1);
-      const sum = slice.reduce((acc, curr) => acc + curr.cumulativePnl, 0);
-      pnlPoints[i].sma20 = sum / 20;
+      const window = points.slice(i - 19, i + 1);
+      points[i].sma20 =
+        window.reduce((a, p) => a + p.cumulativePnl, 0) / window.length;
     }
   }
 
-  return pnlPoints;
-};
+  return points;
+}

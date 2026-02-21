@@ -16,64 +16,115 @@ import {
   Area,
   ReferenceLine
 } from 'recharts';
-import { 
-  Upload, 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
-  FileText, 
-  Plus, 
+import {
+  Upload,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  FileText,
   Info,
   ChevronRight,
-  Download,
-  Trash2
+  Trash2,
+  Shield,
+  Zap,
+  LineChart as LineChartIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { parseBrokerCsv, calculatePnl, type Trade, type PnlPoint } from './utils/pnlParser';
 import { SAMPLE_CSV } from './constants';
+import { format } from 'date-fns';
+import PositionSizeCalculator from './pages/PositionSizeCalculator';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const StatCard = ({ title, value, icon: Icon, trend }: { title: string, value: string, icon: any, trend?: 'up' | 'down' | 'neutral' }) => (
-  <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex flex-col gap-2">
-    <div className="flex items-center justify-between">
-      <span className="text-zinc-500 text-sm font-medium uppercase tracking-wider">{title}</span>
-      <div className="p-2 bg-zinc-50 rounded-lg">
-        <Icon className="w-4 h-4 text-zinc-600" />
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+  trend,
+  accent,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  trend?: 'up' | 'down' | 'neutral';
+  accent?: 'emerald' | 'rose' | 'amber' | 'slate';
+}) => {
+  const accentStyles = {
+    emerald: 'bg-emerald-500/10 text-emerald-600',
+    rose: 'bg-rose-500/10 text-rose-600',
+    amber: 'bg-amber-500/10 text-amber-600',
+    slate: 'bg-zinc-500/10 text-zinc-600',
+  };
+  const iconBg = accent ? accentStyles[accent] : 'bg-zinc-100 text-zinc-600';
+  return (
+    <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm shadow-zinc-200/50 hover:shadow-md hover:border-zinc-200/80 transition-all duration-200 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
+          {title}
+        </span>
+        <div className={cn('p-2 rounded-xl', iconBg)}>
+          <Icon className="w-4 h-4" strokeWidth={2.25} />
+        </div>
+      </div>
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-2xl font-bold tracking-tight text-zinc-900">
+          {value}
+        </span>
+        {trend && (
+          <span
+            className={cn(
+              'text-xs font-semibold px-2 py-0.5 rounded-full',
+              trend === 'up' && 'bg-emerald-100 text-emerald-700',
+              trend === 'down' && 'bg-rose-100 text-rose-700',
+              trend === 'neutral' && 'bg-zinc-100 text-zinc-600'
+            )}
+          >
+            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '•'}
+          </span>
+        )}
       </div>
     </div>
-    <div className="flex items-baseline gap-2">
-      <span className="text-2xl font-bold text-zinc-900">{value}</span>
-      {trend && (
-        <span className={cn(
-          "text-xs font-semibold px-1.5 py-0.5 rounded-full",
-          trend === 'up' ? "bg-emerald-50 text-emerald-600" : 
-          trend === 'down' ? "bg-rose-50 text-rose-600" : "bg-zinc-50 text-zinc-600"
-        )}>
-          {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '•'}
-        </span>
-      )}
-    </div>
-  </div>
-);
+  );
+};
+
+type Page = 'dashboard' | 'calculator';
 
 export default function App() {
+  const [page, setPage] = useState<Page>('dashboard');
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [pnlData, setPnlData] = useState<PnlPoint[]>([]);
   const [showSma, setShowSma] = useState(true);
+  const [showAllTrades, setShowAllTrades] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const pnlData = useMemo(() => calculatePnl(trades), [trades]);
+  const pnlByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    pnlData.forEach((p) => {
+      map[p.date] = p.pnl;
+    });
+    return map;
+  }, [pnlData]);
+
+  const RECENT_TRADES_LIMIT = 20;
+  const sortedByDate = useMemo(
+    () => [...trades].sort((a, b) => b.date.getTime() - a.date.getTime()),
+    [trades]
+  );
+  const displayedTrades = showAllTrades
+    ? sortedByDate
+    : sortedByDate.slice(0, RECENT_TRADES_LIMIT);
+  const hasMoreTrades = trades.length > RECENT_TRADES_LIMIT;
+
   const loadSampleData = () => {
     setError(null);
-    const parsedTrades = parseBrokerCsv(SAMPLE_CSV);
-    const calculatedPnl = calculatePnl(parsedTrades);
-    setTrades(parsedTrades);
-    setPnlData(calculatedPnl);
+    const parsed = parseBrokerCsv(SAMPLE_CSV);
+    setTrades(parsed);
   };
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
@@ -82,9 +133,9 @@ export default function App() {
     setError(null);
 
     let file: File | null = null;
-    if ('files' in e.target && e.target.files) {
+    if ('files' in e.target && e.target.files?.length) {
       file = e.target.files[0];
-    } else if ('dataTransfer' in e && e.dataTransfer.files) {
+    } else if ('dataTransfer' in e && e.dataTransfer?.files?.length) {
       file = e.dataTransfer.files[0];
     }
 
@@ -92,33 +143,16 @@ export default function App() {
 
     try {
       const text = await file.text();
-      const newTrades = parseBrokerCsv(text);
-      
-      if (newTrades.length === 0) {
-        setError("Could not find any valid trades in this file. Please ensure it's a CSV with columns like 'Date', 'Symbol', 'Side', and 'Quantity'.");
+      const parsed = parseBrokerCsv(text);
+
+      if (parsed.length === 0) {
+        setError('No valid options orders found. Use your Webull options order list CSV (e.g. from Account → Orders → Export).');
         return;
       }
 
-      // Merge and de-duplicate
-      setTrades(prevTrades => {
-        const combined = [...prevTrades, ...newTrades];
-        // Use a Map to de-duplicate based on a unique key
-        const uniqueMap = new Map();
-        combined.forEach(t => {
-          const key = `${t.date.getTime()}-${t.symbol}-${t.type}-${t.quantity}-${t.price}`;
-          uniqueMap.set(key, t);
-        });
-        
-        const sorted = Array.from(uniqueMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
-        
-        // Recalculate PNL for the entire set
-        const calculatedPnl = calculatePnl(sorted);
-        setPnlData(calculatedPnl);
-        
-        return sorted;
-      });
+      setTrades(parsed);
     } catch (err) {
-      setError("An error occurred while reading the file. Please try again with a valid CSV.");
+      setError('Could not read the file. Please upload a valid Webull options CSV.');
       console.error(err);
     }
   }, []);
@@ -126,7 +160,9 @@ export default function App() {
   const stats = useMemo(() => {
     if (pnlData.length === 0) return null;
     const totalPnl = pnlData[pnlData.length - 1].cumulativePnl;
-    const winRate = (trades.filter(t => t.pnl && t.pnl > 0).length / trades.length) * 100 || 0;
+    const winningDays = pnlData.filter((d) => d.pnl > 0).length;
+    const winRate =
+      pnlData.length > 0 ? (winningDays / pnlData.length) * 100 : 0;
     const maxPnl = Math.max(...pnlData.map(d => d.cumulativePnl));
     const drawdown = maxPnl > 0 ? ((maxPnl - totalPnl) / maxPnl) * 100 : 0;
 
@@ -141,187 +177,294 @@ export default function App() {
 
   const clearData = () => {
     setTrades([]);
-    setPnlData([]);
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-zinc-900 font-sans selection:bg-zinc-900 selection:text-white">
+    <div className="min-h-screen bg-zinc-50/80 text-zinc-900 font-sans selection:bg-zinc-900 selection:text-white">
       {/* Header */}
-      <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-white" />
+      <header className="border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-zinc-200/30">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-zinc-900 rounded-xl flex items-center justify-center shadow-sm">
+                <Activity className="w-5 h-5 text-white" strokeWidth={2.25} />
+              </div>
+              <h1 className="text-lg font-bold tracking-tight text-zinc-900">
+                TradePulse
+              </h1>
             </div>
-            <h1 className="text-xl font-bold tracking-tight">TradePulse</h1>
+            <nav className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage('dashboard')}
+                className={cn(
+                  'text-sm font-medium px-3 py-2 rounded-lg transition-colors',
+                  page === 'dashboard'
+                    ? 'bg-zinc-100 text-zinc-900'
+                    : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50'
+                )}
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage('calculator')}
+                className={cn(
+                  'text-sm font-medium px-3 py-2 rounded-lg transition-colors',
+                  page === 'calculator'
+                    ? 'bg-zinc-100 text-zinc-900'
+                    : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50'
+                )}
+              >
+                Calculator
+              </button>
+            </nav>
           </div>
-          <div className="flex items-center gap-4">
-            {trades.length > 0 && (
-              <button 
+          <div className="flex items-center gap-3">
+            {page === 'dashboard' && trades.length > 0 && (
+              <button
+                type="button"
                 onClick={clearData}
-                className="text-sm font-medium text-rose-600 hover:text-rose-700 transition-colors flex items-center gap-2"
+                className="text-sm font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-3 py-2 rounded-lg transition-colors flex items-center gap-2"
               >
                 <Trash2 className="w-4 h-4" />
                 Clear Data
               </button>
             )}
-            <a 
-              href="https://github.com" 
-              target="_blank" 
-              className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
+            <a
+              href="https://github.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-zinc-500 hover:text-zinc-800 px-3 py-2 rounded-lg hover:bg-zinc-100 transition-colors"
             >
-              Documentation
+              Docs
             </a>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        {page === 'calculator' ? (
+          <PositionSizeCalculator />
+        ) : (
         <AnimatePresence mode="wait">
           {trades.length === 0 ? (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-2xl mx-auto mt-12"
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.25 }}
+              className="max-w-xl mx-auto mt-8 sm:mt-12"
             >
-              <div 
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleFileUpload}
                 className={cn(
-                  "relative group cursor-pointer border-2 border-dashed rounded-3xl p-12 transition-all duration-300 flex flex-col items-center text-center gap-6",
-                  isDragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-400 bg-white"
+                  'relative border-2 border-dashed rounded-2xl p-10 sm:p-12 transition-all duration-200 flex flex-col items-center text-center gap-5',
+                  isDragging
+                    ? 'border-zinc-800 bg-zinc-100 scale-[1.01]'
+                    : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/50 shadow-sm'
                 )}
               >
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  onChange={handleFileUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                <div className="w-20 h-20 bg-zinc-50 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Upload className="w-8 h-8 text-zinc-400 group-hover:text-zinc-900 transition-colors" />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold text-zinc-900">Upload Broker Statement</h2>
-                  <p className="text-zinc-500 max-w-sm mx-auto">
-                    Drag and drop your CSV export from Interactive Brokers, Webull, Robinhood, or Schwab to see your performance.
-                  </p>
+                <div className="relative flex-1 flex flex-col items-center justify-center gap-5 min-h-[180px]">
+                  <div className="absolute inset-0 cursor-pointer rounded-2xl">
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleFileUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </div>
+                  <div
+                    className={cn(
+                      'w-16 h-16 rounded-2xl flex items-center justify-center pointer-events-none transition-colors',
+                      isDragging ? 'bg-zinc-800' : 'bg-zinc-100'
+                    )}
+                  >
+                    <Upload
+                      className={cn('w-7 h-7', isDragging ? 'text-white' : 'text-zinc-500')}
+                      strokeWidth={2}
+                    />
+                  </div>
+                  <div className="space-y-1.5 pointer-events-none">
+                    <h2 className="text-xl font-bold text-zinc-900">
+                      Upload Webull options order list
+                    </h2>
+                    <p className="text-sm text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                      Drag and drop your CSV or click to browse. Export from Account → Orders → Export.
+                    </p>
+                  </div>
                 </div>
 
                 {error && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-rose-50 text-rose-600 px-6 py-3 rounded-xl text-sm font-medium border border-rose-100 max-w-md"
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="relative z-20 bg-rose-50 text-rose-700 px-4 py-2.5 rounded-xl text-sm font-medium border border-rose-200/80 max-w-md"
                   >
                     {error}
                   </motion.div>
                 )}
-                <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
-                  <div className="flex items-center gap-2 text-xs font-medium text-zinc-400 uppercase tracking-widest">
-                    <Info className="w-3 h-3" />
-                    Supports CSV format
-                  </div>
-                  <div className="hidden sm:block w-px h-4 bg-zinc-200" />
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); loadSampleData(); }}
-                    className="text-xs font-bold text-zinc-900 uppercase tracking-widest hover:underline"
+                <div className="relative z-20 flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Info className="w-3.5 h-3.5" />
+                    CSV only
+                  </span>
+                  <span className="hidden sm:inline text-zinc-200">·</span>
+                  <button
+                    type="button"
+                    onClick={loadSampleData}
+                    className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 px-2.5 py-1.5 rounded-lg transition-colors"
                   >
-                    Load Sample Data
+                    Load sample data
                   </button>
                 </div>
               </div>
 
-              <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
                 {[
-                  { title: "Privacy First", desc: "Data stays in your browser. We never see your trades." },
-                  { title: "Smart Parsing", desc: "Automatically detects columns for major brokers." },
-                  { title: "Technical Indicators", desc: "Toggle 20SMA and other overlays instantly." }
-                ].map((feature, i) => (
-                  <div key={i} className="space-y-2">
-                    <h3 className="font-bold text-zinc-900">{feature.title}</h3>
-                    <p className="text-sm text-zinc-500 leading-relaxed">{feature.desc}</p>
+                  {
+                    icon: Shield,
+                    title: 'Privacy first',
+                    desc: 'Data stays in your browser. We never see your trades.',
+                  },
+                  {
+                    icon: Zap,
+                    title: 'Smart parsing',
+                    desc: 'Detects Webull and other broker CSV columns automatically.',
+                  },
+                  {
+                    icon: LineChartIcon,
+                    title: '20SMA overlay',
+                    desc: 'Toggle a 20-day moving average on your PnL chart.',
+                  },
+                ].map((feature) => {
+                  const Icon = feature.icon;
+                  return (
+                  <div
+                    key={feature.title}
+                    className="flex gap-4 p-4 rounded-xl bg-white border border-zinc-100 shadow-sm"
+                  >
+                    <div className="shrink-0 w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center">
+                      <Icon className="w-5 h-5 text-zinc-600" strokeWidth={2} />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <h3 className="font-semibold text-zinc-900 text-sm">
+                        {feature.title}
+                      </h3>
+                      <p className="text-xs text-zinc-500 leading-relaxed">
+                        {feature.desc}
+                      </p>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="space-y-8"
+              transition={{ duration: 0.2 }}
+              className="space-y-6 sm:space-y-8"
             >
               {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard 
-                  title="Total PNL" 
-                  value={stats?.totalPnl || '$0.00'} 
-                  icon={TrendingUp} 
-                  trend={stats?.trend as any} 
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <StatCard
+                  title="Total PnL"
+                  value={stats?.totalPnl ?? '$0.00'}
+                  icon={TrendingUp}
+                  trend={stats?.trend as 'up' | 'down' | undefined}
+                  accent="emerald"
                 />
-                <StatCard 
-                  title="Win Rate" 
-                  value={stats?.winRate || '0%'} 
-                  icon={Activity} 
+                <StatCard
+                  title="Win rate"
+                  value={stats?.winRate ?? '0%'}
+                  icon={Activity}
+                  accent="slate"
                 />
-                <StatCard 
-                  title="Max Drawdown" 
-                  value={stats?.drawdown || '0%'} 
-                  icon={TrendingDown} 
+                <StatCard
+                  title="Max drawdown"
+                  value={stats?.drawdown ?? '0%'}
+                  icon={TrendingDown}
                   trend="down"
+                  accent="rose"
                 />
-                <StatCard 
-                  title="Total Trades" 
-                  value={stats?.tradeCount.toString() || '0'} 
-                  icon={FileText} 
+                <StatCard
+                  title="Trades"
+                  value={stats?.tradeCount.toString() ?? '0'}
+                  icon={FileText}
+                  accent="amber"
                 />
               </div>
 
-              {/* Main Chart Section */}
-              <div className="bg-white p-8 rounded-3xl border border-zinc-100 shadow-sm space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              {/* Chart Section */}
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-100 shadow-sm shadow-zinc-200/50 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-bold text-zinc-900">Cumulative PNL Chart</h2>
-                    <p className="text-sm text-zinc-500">Performance over time with 20-day Simple Moving Average</p>
+                    <h2 className="text-lg font-bold text-zinc-900">PnL chart</h2>
+                    <p className="text-xs sm:text-sm text-zinc-500 mt-0.5">
+                      Cumulative profit by day. Add 20SMA below.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 bg-zinc-50 p-1 rounded-xl border border-zinc-100">
-                    <button 
+                  <div className="flex items-center gap-1.5 bg-zinc-100 p-1 rounded-lg w-fit">
+                    <span className="text-xs text-zinc-500 px-2 py-1.5">20SMA</span>
+                    <button
+                      type="button"
                       onClick={() => setShowSma(!showSma)}
                       className={cn(
-                        "px-4 py-2 text-sm font-medium rounded-lg transition-all",
-                        showSma ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                        'px-3 py-1.5 text-sm font-medium rounded-md transition-all',
+                        showSma
+                          ? 'bg-white text-zinc-900 shadow-sm'
+                          : 'text-zinc-500 hover:text-zinc-700'
                       )}
                     >
-                      20SMA {showSma ? 'On' : 'Off'}
+                      {showSma ? 'On' : 'Off'}
                     </button>
                   </div>
                 </div>
 
-                <div className="h-[400px] w-full">
+                <div className="h-[340px] sm:h-[380px] w-full min-h-[280px] rounded-xl overflow-hidden bg-zinc-50/30">
+                  {pnlData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-zinc-400 text-sm font-medium rounded-xl bg-zinc-50/50 border border-zinc-100">
+                      No PnL data yet. Upload a CSV or load sample data.
+                    </div>
+                  ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={pnlData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <AreaChart
+                      key={`pnl-chart-${pnlData.length}-${pnlData[pnlData.length - 1]?.date ?? ''}`}
+                      data={pnlData}
+                      margin={{ top: 12, right: 12, left: 8, bottom: 8 }}
+                    >
                       <defs>
                         <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#18181b" stopOpacity={0.1}/>
                           <stop offset="95%" stopColor="#18181b" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
-                      <XAxis 
-                        dataKey="date" 
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
+                      <XAxis
+                        dataKey="date"
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fontSize: 12, fill: '#71717a' }}
-                        dy={10}
+                        tick={{ fontSize: 11, fill: '#71717a' }}
+                        dy={6}
+                        tickFormatter={(value) => format(new Date(value), 'MMM d')}
+                        padding={{ left: 4, right: 4 }}
+                        interval="preserveStartEnd"
+                        minTickGap={32}
                       />
-                      <YAxis 
+                      <YAxis
                         axisLine={false}
                         tickLine={false}
-                        width={80}
-                        tick={{ fontSize: 12, fill: '#71717a' }}
-                        tickFormatter={(val) => `$${val.toLocaleString()}`}
+                        width={56}
+                        tick={{ fontSize: 11, fill: '#71717a' }}
+                        tickFormatter={(val) => `$${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toLocaleString()}`}
+                        padding={{ top: 8, bottom: 8 }}
                       />
                       <Tooltip 
                         contentStyle={{ 
@@ -330,7 +473,28 @@ export default function App() {
                           border: '1px solid #f1f1f1',
                           boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                         }}
-                        formatter={(value: any) => [`$${parseFloat(value).toFixed(2)}`, '']}
+                        labelFormatter={(label) => format(new Date(label), 'MMM d, yyyy')}
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length || !label) return null;
+                          const point = payload[0]?.payload as PnlPoint;
+                          return (
+                            <div className="px-3 py-2 space-y-1">
+                              <div className="font-medium text-zinc-900">
+                                {format(new Date(label), 'MMM d, yyyy')}
+                              </div>
+                              <div className="text-sm text-zinc-600">
+                                Daily P/L: <span className={cn('font-medium', point.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                                  ${point.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                              <div className="text-sm text-zinc-600">
+                                Cumulative: <span className="font-medium text-zinc-900">
+                                  ${point.cumulativePnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }}
                       />
                       <ReferenceLine y={0} stroke="#e4e4e7" strokeWidth={1} />
                       <Area 
@@ -355,53 +519,116 @@ export default function App() {
                       )}
                     </AreaChart>
                   </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
-              {/* Trade List */}
-              <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
-                  <h3 className="font-bold text-zinc-900">Recent Activity</h3>
-                  <button className="text-sm font-medium text-zinc-500 hover:text-zinc-900 flex items-center gap-1">
-                    View All <ChevronRight className="w-4 h-4" />
-                  </button>
+              {/* Trade list */}
+              <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm shadow-zinc-200/50 overflow-hidden">
+                <div className="px-4 sm:px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
+                  <h3 className="font-semibold text-zinc-900">Recent activity</h3>
+                  {hasMoreTrades && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllTrades((prev) => !prev)}
+                      className="text-sm font-medium text-zinc-500 hover:text-zinc-800 flex items-center gap-1 py-1.5 px-2 rounded-lg hover:bg-zinc-100 transition-colors"
+                    >
+                      {showAllTrades ? 'Show less' : 'View all'}
+                      <ChevronRight
+                        className={cn('w-4 h-4 transition-transform', showAllTrades && 'rotate-90')}
+                      />
+                    </button>
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-zinc-50/50">
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Date</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Symbol</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Type</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Qty</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Price</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Amount</th>
+                      <tr className="bg-zinc-50/80">
+                        <th className="sticky left-0 z-10 bg-zinc-50/80 px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          Symbol
+                        </th>
+                        <th className="px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th className="px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          Contracts
+                        </th>
+                        <th className="px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          Price
+                        </th>
+                        <th className="px-4 sm:px-5 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">
+                          Realized PnL (day)
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {[...trades].reverse().slice(0, 20).map((trade, i) => (
-                        <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(trade.date)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="font-mono text-sm font-bold text-zinc-900">{trade.symbol}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={cn(
-                              "text-xs font-bold px-2 py-1 rounded-md",
-                              trade.type === 'BUY' ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                            )}>
-                              {trade.type}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">{trade.quantity}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">${trade.price.toFixed(2)}</td>
-                          <td className="px-6 py-4 text-sm font-medium text-zinc-900">
-                            ${Math.abs(trade.amount).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
+                      {displayedTrades.map((trade, i) => {
+                        const dayKey = format(trade.date, 'yyyy-MM-dd');
+                        const prevDayKey =
+                          i > 0 ? format(displayedTrades[i - 1].date, 'yyyy-MM-dd') : '';
+                        const isFirstRowOfDay = dayKey !== prevDayKey;
+                        const dayPnl = pnlByDate[dayKey] ?? 0;
+                        return (
+                          <tr
+                            key={`${trade.date.getTime()}-${trade.symbol}-${trade.quantity}-${i}`}
+                            className={cn(
+                              'hover:bg-zinc-50/60 transition-colors',
+                              i % 2 === 1 && 'bg-zinc-50/30'
+                            )}
+                          >
+                            <td className="sticky left-0 z-10 bg-inherit px-4 sm:px-5 py-3 text-sm text-zinc-600 whitespace-nowrap">
+                              {new Intl.DateTimeFormat('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              }).format(trade.date)}
+                            </td>
+                            <td className="px-4 sm:px-5 py-3">
+                              <span className="font-mono text-sm font-semibold text-zinc-900">
+                                {trade.symbol}
+                              </span>
+                            </td>
+                            <td className="px-4 sm:px-5 py-3">
+                              <span
+                                className={cn(
+                                  'text-xs font-semibold px-2 py-1 rounded-md',
+                                  trade.type === 'BUY'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-rose-100 text-rose-700'
+                                )}
+                              >
+                                {trade.type}
+                              </span>
+                            </td>
+                            <td className="px-4 sm:px-5 py-3 text-sm text-zinc-600">
+                              {trade.quantity}
+                            </td>
+                            <td className="px-4 sm:px-5 py-3 text-sm text-zinc-600 tabular-nums">
+                              ${trade.price.toFixed(2)}
+                            </td>
+                            <td className="px-4 sm:px-5 py-3 text-sm font-medium text-right tabular-nums">
+                              {isFirstRowOfDay ? (
+                                <span
+                                  className={cn(
+                                    dayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                  )}
+                                >
+                                  {dayPnl >= 0 ? '+' : ''}$
+                                  {dayPnl.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-300">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -409,19 +636,22 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto py-12 border-t border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2 text-zinc-400">
-            <Activity className="w-4 h-4" />
-            <span className="text-sm">Built for traders, by traders.</span>
-          </div>
-          <div className="flex items-center gap-8">
-            <a href="#" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors">Privacy Policy</a>
-            <a href="#" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors">Terms of Service</a>
-            <a href="#" className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors">Contact Support</a>
+      <footer className="mt-auto py-8 border-t border-zinc-200/80 bg-white/50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-zinc-400">
+            TradePulse · Options PnL from your Webull CSV. Data stays in your browser.
+          </p>
+          <div className="flex items-center gap-5">
+            <a href="#" className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors">
+              Privacy
+            </a>
+            <a href="#" className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors">
+              Terms
+            </a>
           </div>
         </div>
       </footer>
