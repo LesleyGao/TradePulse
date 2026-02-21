@@ -27,6 +27,7 @@ import {
   ChevronDown,
   Trash2,
   Shield,
+  ShieldCheck,
   Zap,
   LineChart as LineChartIcon,
   CalendarDays,
@@ -115,6 +116,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [chartHovered, setChartHovered] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
+  const [maxLossesPerDay, setMaxLossesPerDay] = useState(2); // user's rule: stop after this many losses in a day
   const [error, setError] = useState<string | null>(null);
 
   const pnlData = useMemo(() => calculatePnl(trades), [trades]);
@@ -249,6 +251,21 @@ export default function App() {
     const aboveBreakeven =
       breakevenWinRatePct != null ? winRate >= breakevenWinRatePct : null;
 
+    // Rule: max N losses per day (user-editable). Consistency = % of trading days with ≤N losing trades.
+    const tradesByDay: Record<string, { losses: number }> = {};
+    for (const t of groupedTrades) {
+      const day = format(t.date, 'yyyy-MM-dd');
+      if (!tradesByDay[day]) tradesByDay[day] = { losses: 0 };
+      if (t.pnl < 0) tradesByDay[day].losses += 1;
+    }
+    const ruleTotalDays = Object.keys(tradesByDay).length;
+    const ruleDaysBroke = Object.values(tradesByDay).filter((d) => d.losses > maxLossesPerDay).length;
+    const ruleDaysFollowed = ruleTotalDays - ruleDaysBroke;
+    const ruleConsistencyPct =
+      ruleTotalDays > 0 ? (ruleDaysFollowed / ruleTotalDays) * 100 : null;
+    const ruleConsistencyFormatted =
+      ruleConsistencyPct != null ? `${ruleConsistencyPct.toFixed(1)}%` : '—';
+
     return {
       totalPnl: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalPnl),
       winRate: `${winRate.toFixed(1)}%`,
@@ -261,8 +278,12 @@ export default function App() {
       avgLoss: avgLossFormatted,
       breakevenWinRate: breakevenWinRateFormatted,
       aboveBreakeven,
+      ruleConsistency: ruleConsistencyFormatted,
+      ruleDaysFollowed,
+      ruleTotalDays,
+      ruleDaysBroke,
     };
-  }, [pnlData, groupedTrades]);
+  }, [pnlData, groupedTrades, maxLossesPerDay]);
 
   const clearData = () => {
     setTrades([]);
@@ -274,33 +295,41 @@ export default function App() {
       <header className="sticky top-0 z-50 border-b border-stone-200/80 bg-white/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <a href="#" className="flex items-center gap-2.5" onClick={(e) => { e.preventDefault(); setPage('dashboard'); }}>
+            <a
+              href="#"
+              className="flex items-center gap-2.5 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
+              onClick={(e) => { e.preventDefault(); setPage('dashboard'); }}
+            >
               <div className="w-8 h-8 rounded-lg bg-stone-900 flex items-center justify-center">
                 <Activity className="w-4 h-4 text-white" strokeWidth={2.5} />
               </div>
               <span className="text-base font-bold tracking-tight text-stone-900">TradePulse</span>
             </a>
-            <nav className="flex items-center gap-0.5">
+            <nav className="flex items-center gap-1 p-0.5 rounded-lg bg-stone-100/80" role="tablist">
               <button
                 type="button"
+                role="tab"
+                aria-selected={page === 'dashboard'}
                 onClick={() => setPage('dashboard')}
                 className={cn(
-                  'text-sm font-medium px-3.5 py-2 rounded-md transition-colors',
+                  'text-sm font-medium px-3.5 py-2 rounded-md transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
                   page === 'dashboard'
-                    ? 'bg-stone-100 text-stone-900'
-                    : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+                    ? 'bg-white text-stone-900 shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
                 )}
               >
                 Dashboard
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={page === 'calculator'}
                 onClick={() => setPage('calculator')}
                 className={cn(
-                  'text-sm font-medium px-3.5 py-2 rounded-md transition-colors',
+                  'text-sm font-medium px-3.5 py-2 rounded-md transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
                   page === 'calculator'
-                    ? 'bg-stone-100 text-stone-900'
-                    : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+                    ? 'bg-white text-stone-900 shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
                 )}
               >
                 Calculator
@@ -312,10 +341,11 @@ export default function App() {
               <button
                 type="button"
                 onClick={clearData}
-                className="text-xs font-medium text-stone-500 hover:text-rose-600 hover:bg-rose-50/80 px-2.5 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+                className="text-xs font-medium text-stone-500 hover:text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-1"
+                title="Clear all uploaded data"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Clear
+                Clear data
               </button>
             )}
           </div>
@@ -337,8 +367,8 @@ export default function App() {
             >
               <div className="text-center mb-10">
                 <h2 className="text-2xl font-bold tracking-tight text-stone-900">Dashboard</h2>
-                <p className="text-stone-600 mt-1.5 text-sm">
-                  Upload your Webull options CSV to see PnL, risk, and activity.
+                <p className="text-stone-600 mt-1.5 text-sm max-w-sm mx-auto">
+                  Upload your Webull options CSV to see PnL, win rate, and rule consistency.
                 </p>
               </div>
 
@@ -347,7 +377,7 @@ export default function App() {
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleFileUpload}
                 className={cn(
-                  'relative rounded-2xl border-2 border-dashed p-12 sm:p-14 flex flex-col items-center justify-center gap-6 transition-all min-h-[260px]',
+                  'relative rounded-2xl border-2 border-dashed p-12 sm:p-16 flex flex-col items-center justify-center gap-6 transition-all duration-200 min-h-[280px]',
                   isDragging
                     ? 'border-stone-500 bg-stone-100 scale-[1.01]'
                     : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/50'
@@ -358,24 +388,25 @@ export default function App() {
                   accept=".csv,text/csv"
                   onChange={handleFileUpload}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer rounded-2xl"
+                  aria-label="Upload Webull CSV"
                 />
                 <div
                   className={cn(
-                    'w-16 h-16 rounded-2xl flex items-center justify-center pointer-events-none transition-all',
+                    'w-16 h-16 rounded-2xl flex items-center justify-center pointer-events-none transition-colors',
                     isDragging ? 'bg-stone-800' : 'bg-stone-100'
                   )}
                 >
                   <Upload className={cn('w-8 h-8', isDragging ? 'text-white' : 'text-stone-500')} strokeWidth={2} />
                 </div>
-                <div className="pointer-events-none text-center space-y-1">
+                <div className="pointer-events-none text-center space-y-1.5">
                   <p className="font-semibold text-stone-900">Drop your CSV here or click to browse</p>
-                  <p className="text-sm text-stone-500">Webull: Account → Orders → Export. CSV only.</p>
+                  <p className="text-sm text-stone-500">Webull: Account → Orders → Export</p>
                 </div>
                 {error && (
                   <motion.div
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative z-10 w-full max-w-sm bg-rose-50 text-rose-700 px-4 py-2.5 rounded-lg text-sm font-medium border border-rose-200"
+                    className="relative z-10 w-full max-w-sm bg-rose-50 text-rose-700 px-4 py-2.5 rounded-xl text-sm font-medium border border-rose-200"
                   >
                     {error}
                   </motion.div>
@@ -383,19 +414,19 @@ export default function App() {
                 <button
                   type="button"
                   onClick={loadSampleData}
-                  className="relative z-10 text-sm font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 px-4 py-2 rounded-lg transition-colors"
+                  className="relative z-10 text-sm font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 px-4 py-2.5 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
                 >
                   Load sample data instead
                 </button>
               </div>
 
-              <div className="mt-12 flex flex-wrap justify-center gap-x-8 gap-y-4 text-center">
+              <div className="mt-14 flex flex-wrap justify-center gap-x-10 gap-y-5 text-center">
                 {[
                   { icon: Shield, label: 'Data stays in your browser' },
                   { icon: Zap, label: 'Auto-detects Webull columns' },
-                  { icon: LineChartIcon, label: 'PnL chart + 20SMA' },
+                  { icon: LineChartIcon, label: 'PnL chart + 20-day SMA' },
                 ].map(({ icon: Icon, label }) => (
-                  <div key={label} className="flex items-center gap-2 text-stone-500 text-sm">
+                  <div key={label} className="flex items-center gap-2.5 text-stone-500 text-sm">
                     <Icon className="w-4 h-4 text-stone-400" strokeWidth={2} />
                     <span>{label}</span>
                   </div>
@@ -407,53 +438,174 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2 }}
-              className="space-y-10"
+              className="space-y-12"
             >
-              {/* Stats */}
-              <section>
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-4">Performance</h2>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[
-                    { title: 'Total PnL', value: stats?.totalPnl ?? '$0', icon: TrendingUp, trend: stats?.trend, accent: 'emerald' as const },
-                    { title: '5-day rolling', value: stats?.rolling5DayPnl ?? '$0', icon: CalendarDays, trend: stats?.rolling5Trend, accent: 'slate' as const },
-                    { title: 'Trades', value: stats?.tradeCount?.toString() ?? '0', icon: FileText, accent: 'amber' as const },
-                    { title: 'Avg win', value: stats?.avgWin ?? '—', icon: DollarSign, trend: 'up' as const, accent: 'emerald' as const },
-                    { title: 'Avg loss', value: stats?.avgLoss ?? '—', icon: TrendingDown, trend: 'down' as const, accent: 'rose' as const },
-                    { title: 'Win rate', value: stats?.winRate ?? '0%', icon: Activity, accent: 'slate' as const },
-                  ].map((item) => (
-                    <StatCard
-                      key={item.title}
-                      title={item.title}
-                      value={item.value}
-                      icon={item.icon}
-                      trend={item.trend as 'up' | 'down' | undefined}
-                      accent={item.accent}
-                      highlight={chartHovered}
-                    />
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-col sm:flex-row gap-3">
-                  <div className="flex items-start gap-2.5 rounded-xl bg-stone-100/80 px-4 py-3 text-sm text-stone-600 flex-1">
-                    <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
-                    <span>5-day rolling negative? Consider reducing size to limit drawdown.</span>
-                  </div>
-                  {stats?.breakevenWinRate != null && (
-                    <div
-                      className={cn(
-                        'flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm flex-1',
-                        stats.aboveBreakeven === true && 'bg-emerald-50 text-emerald-800',
-                        stats.aboveBreakeven === false && 'bg-rose-50 text-rose-800',
-                        stats.aboveBreakeven === null && 'bg-stone-100/80 text-stone-600'
-                      )}
-                    >
-                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>
-                        Breakeven win rate: <strong>{stats.breakevenWinRate}</strong>
-                        {stats.aboveBreakeven === true && ' — You’re above it.'}
-                        {stats.aboveBreakeven === false && ' — Below it; cut losses or improve wins.'}
-                      </span>
-                    </div>
+              {/* Performance — redo */}
+              <section className="space-y-5">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500">Performance</h2>
+
+                {/* Hero: Total PnL + secondary */}
+                <div
+                  className={cn(
+                    'rounded-2xl border p-6 sm:p-8 transition-all duration-200',
+                    chartHovered ? 'bg-stone-100/80 border-stone-300' : 'bg-white border-stone-200/80'
                   )}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
+                    <div>
+                      <p className="text-sm font-medium text-stone-500 uppercase tracking-wider">Total PnL</p>
+                      <p
+                        className={cn(
+                          'text-4xl sm:text-5xl font-bold tracking-tight tabular-nums mt-1',
+                          stats?.trend === 'up' && 'text-emerald-600',
+                          stats?.trend === 'down' && 'text-rose-600',
+                          stats?.trend !== 'up' && stats?.trend !== 'down' && 'text-stone-900'
+                        )}
+                      >
+                        {stats?.totalPnl ?? '$0'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-4 sm:gap-6">
+                      <div>
+                        <p className="text-xs font-medium text-stone-400 uppercase tracking-wider">5-day rolling</p>
+                        <p className={cn('text-lg font-semibold tabular-nums', stats?.rolling5Trend === 'up' ? 'text-emerald-600' : stats?.rolling5Trend === 'down' ? 'text-rose-600' : 'text-stone-700')}>
+                          {stats?.rolling5DayPnl ?? '$0'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-stone-400 uppercase tracking-wider">Trades</p>
+                        <p className="text-lg font-semibold tabular-nums text-stone-700">{stats?.tradeCount ?? '0'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per-trade metrics: 3 cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className={cn('rounded-xl border p-5 transition-all', chartHovered ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-200/80')}>
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Avg win</p>
+                    <p className="text-2xl font-bold tabular-nums text-emerald-600 mt-1">{stats?.avgWin ?? '—'}</p>
+                  </div>
+                  <div className={cn('rounded-xl border p-5 transition-all', chartHovered ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-200/80')}>
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Avg loss</p>
+                    <p className="text-2xl font-bold tabular-nums text-rose-600 mt-1">{stats?.avgLoss ?? '—'}</p>
+                  </div>
+                  <div className={cn('rounded-xl border p-5 transition-all', chartHovered ? 'bg-stone-50 border-stone-200' : 'bg-white border-stone-200/80')}>
+                    <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">Win rate</p>
+                    <p className="text-2xl font-bold tabular-nums text-stone-900 mt-1">{stats?.winRate ?? '0%'}</p>
+                  </div>
+                </div>
+
+                {/* Rule + Insights in one row */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Daily loss limit card — clear rule vs result */}
+                  <div
+                    className={cn(
+                      'rounded-xl border overflow-hidden lg:col-span-2',
+                      stats?.ruleDaysBroke === 0 ? 'bg-emerald-50/80 border-emerald-200/60' : 'bg-amber-50/80 border-amber-200/60'
+                    )}
+                  >
+                    <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-6">
+                      {/* Your rule */}
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className={cn('p-2.5 rounded-xl shrink-0', stats?.ruleDaysBroke === 0 ? 'bg-emerald-500/10' : 'bg-amber-500/10')}>
+                          <ShieldCheck className={cn('w-5 h-5', stats?.ruleDaysBroke === 0 ? 'text-emerald-600' : 'text-amber-600')} strokeWidth={2.25} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1.5">Daily loss limit</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm text-stone-600">Stop after</span>
+                            <div className="inline-flex items-center rounded-lg border-2 border-stone-200 bg-white overflow-hidden focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-300 focus-within:ring-offset-1">
+                              <button
+                                type="button"
+                                onClick={() => setMaxLossesPerDay((n) => (n > 1 ? n - 1 : 1))}
+                                className="flex items-center justify-center w-9 h-9 text-stone-500 hover:bg-stone-100 hover:text-stone-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                                aria-label="Decrease max losses"
+                              >
+                                <span className="text-lg font-medium leading-none">−</span>
+                              </button>
+                              <label className="sr-only" htmlFor="max-losses-per-day">Max losses per day</label>
+                              <input
+                                id="max-losses-per-day"
+                                type="number"
+                                min={1}
+                                max={20}
+                                value={maxLossesPerDay}
+                                onChange={(e) => {
+                                  const n = parseInt(e.target.value, 10);
+                                  if (!Number.isNaN(n) && n >= 1 && n <= 20) setMaxLossesPerDay(n);
+                                }}
+                                onBlur={(e) => {
+                                  const n = parseInt(e.target.value, 10);
+                                  if (Number.isNaN(n) || n < 1) setMaxLossesPerDay(1);
+                                  else if (n > 20) setMaxLossesPerDay(20);
+                                }}
+                                className="w-12 h-9 text-center bg-transparent text-base font-bold text-stone-900 border-0 focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                aria-label="Max losses per day"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setMaxLossesPerDay((n) => (n < 20 ? n + 1 : 20))}
+                                className="flex items-center justify-center w-9 h-9 text-stone-500 hover:bg-stone-100 hover:text-stone-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                                aria-label="Increase max losses"
+                              >
+                                <span className="text-lg font-medium leading-none">+</span>
+                              </button>
+                            </div>
+                            <span className="text-sm text-stone-600">loss{maxLossesPerDay !== 1 ? 'es' : ''} per day</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Result */}
+                      <div className="flex items-center gap-4 sm:gap-6 sm:pl-6 sm:border-l sm:border-stone-200/70">
+                        <div>
+                          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-0.5">Consistency</p>
+                          <p className={cn('text-2xl font-bold tabular-nums', stats?.ruleDaysBroke === 0 ? 'text-emerald-700' : 'text-amber-700')}>
+                            {stats?.ruleConsistency ?? '—'}
+                          </p>
+                        </div>
+                        {stats?.ruleTotalDays != null && stats.ruleTotalDays > 0 && (
+                          <p className="text-sm text-stone-600">
+                            <span className="font-semibold text-stone-800">{stats.ruleDaysFollowed}</span> of {stats.ruleTotalDays} days followed
+                            {stats.ruleDaysBroke > 0 && (
+                              <span className={cn('block mt-0.5 font-medium', stats.ruleDaysBroke === 0 ? 'text-stone-500' : 'text-amber-700')}>
+                                {stats.ruleDaysBroke} day{stats.ruleDaysBroke !== 1 ? 's' : ''} over limit
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Insights panel */}
+                  <div className="rounded-xl border border-stone-200/80 bg-stone-50/50 p-5 space-y-3">
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Insights</p>
+                    <ul className="space-y-2.5 text-sm text-stone-600">
+                      <li className="flex gap-2.5">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span>5-day rolling negative? Consider reducing size to limit drawdown.</span>
+                      </li>
+                      {stats?.breakevenWinRate != null && (
+                        <li
+                          className={cn(
+                            'flex gap-2.5',
+                            stats.aboveBreakeven === true && 'text-emerald-700',
+                            stats.aboveBreakeven === false && 'text-rose-700',
+                            stats.aboveBreakeven === null && 'text-stone-600'
+                          )}
+                        >
+                          <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            Breakeven win rate <strong>{stats.breakevenWinRate}</strong>
+                            {stats.aboveBreakeven === true && ' — above it.'}
+                            {stats.aboveBreakeven === false && ' — below it; cut losses or improve wins.'}
+                          </span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               </section>
 
@@ -475,9 +627,10 @@ export default function App() {
                         type="button"
                         onClick={() => setShowSma(!showSma)}
                         className={cn(
-                          'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                          'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
                           showSma ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                         )}
+                        aria-pressed={showSma}
                       >
                         {showSma ? 'On' : 'Off'}
                       </button>
@@ -563,7 +716,7 @@ export default function App() {
                                 </div>
                                 {point.rolling5DayPnl != null && (
                                   <div className="flex justify-between gap-6">
-                                    <span className="text-zinc-500 text-sm">5-day rolling</span>
+                                    <span className="text-stone-500 text-sm">5-day rolling</span>
                                     <span className={cn('font-semibold tabular-nums text-sm', point.rolling5DayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
                                       {point.rolling5DayPnl >= 0 ? '+' : ''}${point.rolling5DayPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
@@ -622,10 +775,10 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setShowAllTrades((prev) => !prev)}
-                        className="text-sm font-medium text-stone-600 hover:text-stone-900 py-2 px-3 rounded-lg hover:bg-stone-100 transition-colors w-fit flex items-center gap-1.5"
+                        className="text-sm font-medium text-stone-600 hover:text-stone-900 py-2 px-3 rounded-lg hover:bg-stone-100 transition-colors w-fit flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
                       >
                         {showAllTrades ? 'Show less' : 'View all'}
-                        <ChevronRight className={cn('w-4 h-4', showAllTrades && 'rotate-90')} />
+                        <ChevronRight className={cn('w-4 h-4 transition-transform', showAllTrades && 'rotate-90')} />
                       </button>
                     )}
                   </div>
@@ -666,7 +819,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => setExpandedTradeKey((k) => (k === tradeKey ? null : tradeKey))}
                                 className={cn(
-                                  'font-mono text-sm font-medium text-stone-900 inline-flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-1',
+                                  'font-mono text-sm font-medium text-stone-900 inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 -mx-0.5 hover:bg-stone-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-1 transition-colors',
                                   isExpanded && 'bg-stone-100'
                                 )}
                               >
