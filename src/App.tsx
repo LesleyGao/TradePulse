@@ -412,6 +412,20 @@ export default function App() {
         ? expectancyMetric.toFixed(2)
         : '—';
 
+    // System Quality Number (Van Tharp): (Mean R-multiple / StdDev R-multiple) * sqrt(N). R = |avgLoss|.
+    let sqn: number | null = null;
+    if (totalTrades >= 2 && absAvgLoss > 0 && expectancy != null) {
+      const R = absAvgLoss;
+      const rMultiples = groupedTradesForStats.map((t) => t.pnl / R);
+      const meanR = rMultiples.reduce((a, b) => a + b, 0) / rMultiples.length;
+      const variance = rMultiples.reduce((sum, x) => sum + (x - meanR) ** 2, 0) / (rMultiples.length - 1);
+      const stdDevR = Math.sqrt(variance);
+      if (stdDevR > 0) {
+        sqn = (meanR / stdDevR) * Math.sqrt(totalTrades);
+      }
+    }
+    const sqnFormatted = sqn != null ? sqn.toFixed(2) : '—';
+
     // Consecutive losses vs. probability: P(N losses in a row) = lossRate^N. Also max observed and current streak.
     const lossRate = lossPct;
     const sortedByDate = [...groupedTradesForStats].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -501,6 +515,8 @@ export default function App() {
       expectancy,
       expectancyMetricFormatted,
       expectancyMetric,
+      sqnFormatted,
+      sqn,
       consecutiveLossProbs,
       maxConsecutiveLossesObserved,
       currentLossStreak,
@@ -535,8 +551,8 @@ export default function App() {
   return (
     <div className="min-h-screen text-stone-900 font-sans antialiased selection:bg-stone-900 selection:text-white" style={{ backgroundColor: '#fafaf9' }}>
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-stone-200/80 bg-white/90 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-5 sm:px-8 h-16 sm:h-[4.25rem] flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 h-14 sm:h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <a
               href="#"
@@ -579,7 +595,26 @@ export default function App() {
               </button>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {page === 'dashboard' && trades.length > 0 && yearsWithData.length > 0 && (
+              <>
+                <span className="text-xs font-medium text-stone-500 hidden sm:inline">Period</span>
+                <select
+                  value={statsPeriod === 'total' ? 'total' : statsPeriod}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setStatsPeriod(v === 'total' ? 'total' : parseInt(v, 10));
+                  }}
+                  className="text-sm font-medium text-stone-800 bg-white border border-stone-200 rounded-lg py-2 pl-3 pr-9 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-2 cursor-pointer"
+                  aria-label="View stats for period"
+                >
+                  <option value="total">All time</option>
+                  {yearsWithData.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </>
+            )}
             {page === 'dashboard' && trades.length > 0 && (
               <button
                 type="button"
@@ -595,7 +630,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-5 sm:px-8 py-12 sm:py-16">
+      <main className="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-12">
         {page === 'calculator' ? (
           <PositionSizeCalculator />
         ) : (
@@ -606,11 +641,11 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="max-w-xl mx-auto"
+              className="max-w-2xl mx-auto"
             >
-              <div className="text-center mb-14">
-                <h2 className="text-3xl font-bold tracking-tight text-stone-900">Dashboard</h2>
-                <p className="text-stone-600 mt-3 text-base max-w-md mx-auto leading-relaxed">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900">Dashboard</h2>
+                <p className="text-stone-600 mt-2 text-sm sm:text-base max-w-lg mx-auto leading-relaxed">
                   Upload your Webull options CSV to see PnL, win rate, and rule consistency.
                 </p>
               </div>
@@ -620,7 +655,7 @@ export default function App() {
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleFileUpload}
                 className={cn(
-                  'relative rounded-2xl border-2 border-dashed p-14 sm:p-20 flex flex-col items-center justify-center gap-8 transition-all duration-200 min-h-[320px] card',
+                  'relative rounded-2xl border-2 border-dashed p-10 sm:p-12 flex flex-col items-center justify-center gap-6 transition-all duration-200 min-h-[280px] card',
                   isDragging
                     ? 'border-stone-500 bg-stone-100 scale-[1.01]'
                     : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50/50'
@@ -663,7 +698,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="mt-20 flex flex-wrap justify-center gap-x-14 gap-y-8 text-center">
+              <div className="mt-10 flex flex-wrap justify-center gap-x-8 gap-y-6 text-center">
                 {[
                   { icon: Shield, label: 'Data stays in your browser' },
                   { icon: Zap, label: 'Auto-detects Webull columns' },
@@ -683,77 +718,21 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2 }}
-              className="space-y-20"
+              className="space-y-10 sm:space-y-12"
             >
-              {/* Overview — hero + period + stat grid */}
-              <section className="space-y-8">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <h2 className="section-title">Overview</h2>
-                  {yearsWithData.length > 0 && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-stone-500">Period</span>
-                      <select
-                        value={statsPeriod === 'total' ? 'total' : statsPeriod}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setStatsPeriod(v === 'total' ? 'total' : parseInt(v, 10));
-                        }}
-                        className="text-sm font-medium text-stone-800 bg-white border border-stone-200 rounded-xl py-2.5 pl-4 pr-10 shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-2 cursor-pointer"
-                        aria-label="View stats for period"
-                      >
-                        <option value="total">All time</option>
-                        {yearsWithData.map((y) => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Hero: Total PnL */}
-                <div className={cn('card p-8 sm:p-10', chartHovered && 'border-stone-300 shadow-md')}>
-                  <p className="text-sm font-medium text-stone-500">Total PnL</p>
-                  <p
-                    className={cn(
-                      'text-4xl sm:text-5xl font-bold tracking-tight tabular-nums mt-2',
-                      stats?.trend === 'up' && 'text-emerald-600',
-                      stats?.trend === 'down' && 'text-rose-600',
-                      stats?.trend !== 'up' && stats?.trend !== 'down' && 'text-stone-900'
-                    )}
-                  >
-                    {stats?.totalPnl ?? '$0'}
-                  </p>
-                </div>
-
-                {/* Stats grid — scannable cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
-                  <StatCard title="5-day rolling" value={stats?.rolling5DayPnl ?? '$0'} icon={TrendingUp} trend={stats?.rolling5Trend} accent={stats?.rolling5Trend === 'up' ? 'emerald' : stats?.rolling5Trend === 'down' ? 'rose' : 'slate'} />
-                  <StatCard title="Trades" value={String(stats?.tradeCount ?? '0')} icon={Activity} accent="slate" />
-                  <StatCard title="Win rate" value={stats?.winRate ?? '0%'} icon={Activity} accent="slate" />
-                  <StatCard title="Edge" value={stats?.expectancyFormatted ?? '—'} icon={DollarSign} trend={(stats?.expectancy ?? 0) > 0 ? 'up' : (stats?.expectancy ?? 0) < 0 ? 'down' : 'neutral'} accent={(stats?.expectancy ?? 0) > 0 ? 'emerald' : (stats?.expectancy ?? 0) < 0 ? 'rose' : 'slate'} />
-                  <StatCard title="Expectancy metric" value={stats?.expectancyMetricFormatted ?? '—'} icon={DollarSign} trend={(stats?.expectancyMetric ?? 0) > 0 ? 'up' : (stats?.expectancyMetric ?? 0) < 0 ? 'down' : 'neutral'} accent={(stats?.expectancyMetric ?? 0) > 0 ? 'emerald' : (stats?.expectancyMetric ?? 0) < 0 ? 'rose' : 'slate'} />
-                  <StatCard title="Avg win" value={stats?.avgWin ?? '—'} icon={TrendingUp} accent="emerald" />
-                  <StatCard title="Avg loss" value={stats?.avgLoss ?? '—'} icon={TrendingDown} accent="rose" />
-                </div>
-              </section>
-
-              {/* Trend — PnL chart */}
-              <section className="space-y-6">
-                <h2 className="section-title">Trend</h2>
+              {/* PnL chart — at top, no heading */}
+              <section className="space-y-4">
                 <div
                   className="card overflow-hidden"
                   onMouseEnter={() => setChartHovered(true)}
                   onMouseLeave={() => setChartHovered(false)}
                 >
-                <div className="p-6 sm:p-8 space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
-                    <div>
-                      <h3 className="text-lg font-semibold text-stone-900">PnL chart</h3>
-                      <p className="text-sm text-stone-500 mt-1.5 max-w-md">
-                        {chartPeriod === 'daily' && 'Cumulative by day. Below SMA = consider reducing size. '}
-                        Hover to highlight stats.
-                      </p>
-                    </div>
+                <div className="p-5 sm:p-6 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <p className="text-base text-stone-500 max-w-xl leading-snug">
+                      {chartPeriod === 'daily' && 'Cumulative by day. Below SMA = consider reducing size. '}
+                      Hover to highlight stats. Period follows Overview selector.
+                    </p>
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-0.5 p-1.5 rounded-xl bg-stone-100">
                         {(['daily', 'monthly', 'yearly'] as const).map((period) => (
@@ -789,18 +768,18 @@ export default function App() {
                     </div>
                   </div>
                   {chartData.length > 0 && (
-                    <div className="flex items-center gap-5 text-sm text-stone-500">
+                    <div className="flex items-center gap-5 text-base text-stone-600">
                       <span className="flex items-center gap-2"><span className="w-3 h-0.5 bg-stone-700 rounded-full" />Cumulative</span>
                       {chartPeriod === 'daily' && showSma && <span className="flex items-center gap-2"><span className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />20-day SMA</span>}
                     </div>
                   )}
                 </div>
-                <div className="h-[360px] sm:h-[400px] w-full border-t border-stone-100 bg-stone-50/50">
+                <div className="h-[380px] sm:h-[420px] w-full border-t border-stone-100 bg-stone-50/50">
                   {chartData.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
                       <LineChartIcon className="w-10 h-10 text-stone-300" strokeWidth={1.5} />
-                      <p className="text-sm font-medium text-stone-500">No PnL data yet</p>
-                      <p className="text-sm text-stone-400 max-w-xs">Upload a CSV or load sample data.</p>
+                      <p className="text-base font-medium text-stone-500">No PnL data yet</p>
+                      <p className="text-base text-stone-400 max-w-xs">Upload a CSV or load sample data.</p>
                     </div>
                   ) : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -860,26 +839,26 @@ export default function App() {
                           return (
                             <div className="overflow-hidden">
                               <div className="px-4 py-2.5 bg-stone-50 border-b border-stone-100">
-                                <div className="font-semibold text-stone-900 text-sm">{dateLabel}</div>
+                                <div className="font-semibold text-stone-900 text-base">{dateLabel}</div>
                               </div>
                               <div className="px-4 py-3 space-y-2">
                                 <div className="flex justify-between gap-6">
-                                  <span className="text-stone-500 text-sm">{periodLabel} P/L</span>
-                                  <span className={cn('font-semibold tabular-nums text-sm', point.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                                  <span className="text-stone-500 text-base">{periodLabel} P/L</span>
+                                  <span className={cn('font-semibold tabular-nums text-base', point.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
                                     {point.pnl >= 0 ? '+' : ''}${point.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </div>
                                 {chartPeriod === 'daily' && point.rolling5DayPnl != null && (
                                   <div className="flex justify-between gap-6">
-                                    <span className="text-stone-500 text-sm">5-day rolling</span>
-                                    <span className={cn('font-semibold tabular-nums text-sm', point.rolling5DayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                                    <span className="text-stone-500 text-base">5-day rolling</span>
+                                    <span className={cn('font-semibold tabular-nums text-base', point.rolling5DayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
                                       {point.rolling5DayPnl >= 0 ? '+' : ''}${point.rolling5DayPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                   </div>
                                 )}
                                 <div className="flex justify-between gap-6 pt-1 border-t border-stone-100">
-                                  <span className="text-stone-500 text-sm">Cumulative</span>
-                                  <span className="font-semibold tabular-nums text-sm text-stone-900">
+                                  <span className="text-stone-500 text-base">Cumulative</span>
+                                  <span className="font-semibold tabular-nums text-base text-stone-900">
                                     {point.cumulativePnl >= 0 ? '+' : ''}${point.cumulativePnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </div>
@@ -918,11 +897,159 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Breakdown — rules + monthly in two columns */}
-              <section className="space-y-8">
-                <h2 className="section-title">Breakdown</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                <div className="space-y-6">
+              {/* Stats + insights — compact, under PnL chart (no "Overview" label) */}
+              <section className="space-y-4">
+                {/* Single stats card: Total PnL + metrics */}
+                <div className={cn('card overflow-hidden', chartHovered && 'border-stone-300 shadow-md')}>
+                  <div className="p-5 sm:p-6 border-b border-stone-100 bg-stone-50/50">
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 sm:gap-6">
+                      <div>
+                        <p className="text-base font-medium text-stone-600">Total PnL</p>
+                        <p
+                          className={cn(
+                            'text-3xl sm:text-4xl font-bold tracking-tight tabular-nums mt-1.5',
+                            stats?.trend === 'up' && 'text-emerald-600',
+                            stats?.trend === 'down' && 'text-rose-600',
+                            stats?.trend !== 'up' && stats?.trend !== 'down' && 'text-stone-900'
+                          )}
+                        >
+                          {stats?.totalPnl ?? '$0'}
+                        </p>
+                      </div>
+                      <div className="flex gap-8 sm:gap-10">
+                        <div>
+                          <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">5-day</p>
+                          <p className={cn('text-xl font-bold tabular-nums mt-1', stats?.rolling5Trend === 'up' ? 'text-emerald-600' : stats?.rolling5Trend === 'down' ? 'text-rose-600' : 'text-stone-800')}>
+                            {stats?.rolling5DayPnl ?? '$0'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Trades</p>
+                          <p className="text-xl font-bold tabular-nums text-stone-800 mt-1">{stats?.tradeCount ?? '0'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-5 sm:p-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-5 sm:gap-x-10 lg:gap-x-12">
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Win rate</p>
+                        <p className="text-lg font-bold tabular-nums text-stone-800 mt-1">{stats?.winRate ?? '0%'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Edge</p>
+                        <p className={cn('text-lg font-bold tabular-nums mt-1', (stats?.expectancy ?? 0) > 0 ? 'text-emerald-600' : (stats?.expectancy ?? 0) < 0 ? 'text-rose-600' : 'text-stone-800')}>
+                          {stats?.expectancyFormatted ?? '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Expectancy</p>
+                        <p className={cn('text-lg font-bold tabular-nums mt-1', (stats?.expectancyMetric ?? 0) > 0 ? 'text-emerald-600' : (stats?.expectancyMetric ?? 0) < 0 ? 'text-rose-600' : 'text-stone-800')}>
+                          {stats?.expectancyMetricFormatted ?? '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">SQN</p>
+                        <p className={cn('text-lg font-bold tabular-nums mt-1', (stats?.sqn ?? 0) >= 2 ? 'text-emerald-600' : (stats?.sqn ?? 0) > 0 && (stats?.sqn ?? 0) < 1.5 ? 'text-rose-600' : 'text-stone-800')}>
+                          {stats?.sqnFormatted ?? '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Avg win</p>
+                        <p className="text-lg font-bold tabular-nums text-emerald-600 mt-1">{stats?.avgWin ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Avg loss</p>
+                        <p className="text-lg font-bold tabular-nums text-rose-600 mt-1">{stats?.avgLoss ?? '—'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Insights — spaced for readability */}
+                <div className="card p-5 sm:p-6 bg-stone-50/60">
+                  <p className="text-base font-semibold text-stone-800 mb-1">Insights</p>
+                  <p className="text-sm text-stone-600 mb-4">What to consider based on your stats.</p>
+                  <ul className="space-y-4 text-base text-stone-600 leading-relaxed">
+                    {stats?.sqn != null && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span>
+                          <strong className="text-stone-700">SQN ({stats.sqnFormatted})</strong>
+                          {stats.sqn >= 3 && ' — Excellent. Consider scaling if risk rules allow.'}
+                          {stats.sqn >= 2 && stats.sqn < 3 && ' — Good. Trade with discipline.'}
+                          {stats.sqn >= 1.5 && stats.sqn < 2 && ' — Average. Focus on consistency.'}
+                          {(stats.sqn < 1.5 || stats.sqn === 0) && ' — Poor. Reduce size or improve entries/exits.'}
+                        </span>
+                      </li>
+                    )}
+                    {stats?.expectancy != null && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span>
+                          <strong className="text-stone-700">Edge</strong>
+                          {stats.expectancy > 0 && ' — Positive. Stick to your plan.'}
+                          {stats.expectancy < 0 && ' — Negative. Tighten stops or revise strategy.'}
+                          {stats.expectancy === 0 && ' — Breakeven before costs.'}
+                        </span>
+                      </li>
+                    )}
+                    {(stats?.expectancyMetric ?? 0) > 0 && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span><strong className="text-stone-700">Expectancy</strong> — Positive per $ risked. Size accordingly; avoid overbetting.</span>
+                      </li>
+                    )}
+                    {(stats?.expectancyMetric ?? 0) < 0 && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span><strong className="text-stone-700">Expectancy</strong> — Negative. Reduce size until profitable.</span>
+                      </li>
+                    )}
+                    {stats?.breakevenWinRate != null && (
+                      <li
+                        className={cn(
+                          'flex gap-3',
+                          stats.aboveBreakeven === true && 'text-emerald-700',
+                          stats.aboveBreakeven === false && 'text-rose-700',
+                          stats.aboveBreakeven === null && 'text-stone-600'
+                        )}
+                      >
+                        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>
+                          <strong className="text-stone-700">Win rate vs breakeven ({stats.breakevenWinRate})</strong>
+                          {stats.aboveBreakeven === true && ' — Above. Win rate supports edge.'}
+                          {stats.aboveBreakeven === false && ' — Below. Cut losses or let winners run.'}
+                        </span>
+                      </li>
+                    )}
+                    {stats?.rolling5Trend === 'down' && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span><strong className="text-stone-700">5-day rolling</strong> — Negative. Consider reducing size.</span>
+                      </li>
+                    )}
+                    {stats?.rolling5Trend === 'up' && (
+                      <li className="flex gap-3">
+                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+                        <span><strong className="text-stone-700">5-day rolling</strong> — Positive. Stay disciplined.</span>
+                      </li>
+                    )}
+                    <li className="flex gap-3 text-stone-500 pt-3 mt-3 border-t border-stone-200">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>Use your daily loss limit and consistency % to avoid overtrading on bad days.</span>
+                    </li>
+                  </ul>
+                </div>
+              </section>
+
+              {/* Rules, monthly & risk — two columns inline, aligned at top */}
+              <section className="space-y-5">
+                <h2 className="section-title">Rules, monthly & risk</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-start">
+                {/* Left column: Daily loss limit + Consecutive losses */}
+                <div className="space-y-5 flex flex-col">
                   {/* Daily loss limit */}
                   <div
                     className={cn(
@@ -930,15 +1057,15 @@ export default function App() {
                       stats?.ruleDaysBroke === 0 ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-amber-50/80 border-amber-200/80'
                     )}
                   >
-                    <div className="p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-8">
+                    <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-4 min-w-0">
                         <div className={cn('p-2.5 rounded-xl shrink-0', stats?.ruleDaysBroke === 0 ? 'bg-emerald-500/10' : 'bg-amber-500/10')}>
                           <ShieldCheck className={cn('w-5 h-5', stats?.ruleDaysBroke === 0 ? 'text-emerald-600' : 'text-amber-600')} strokeWidth={2.25} />
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-stone-600 mb-2">Daily loss limit</p>
+                          <p className="text-base font-medium text-stone-600 mb-2">Daily loss limit</p>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm text-stone-600">Stop after</span>
+                            <span className="text-base text-stone-600">Stop after</span>
                             <div className="inline-flex items-center rounded-lg border-2 border-stone-200 bg-white overflow-hidden focus-within:border-stone-400 focus-within:ring-2 focus-within:ring-stone-300 focus-within:ring-offset-1">
                               <button
                                 type="button"
@@ -976,19 +1103,19 @@ export default function App() {
                                 <span className="text-lg font-medium leading-none">+</span>
                               </button>
                             </div>
-                            <span className="text-sm text-stone-600">loss{maxLossesPerDay !== 1 ? 'es' : ''} per day</span>
+                            <span className="text-base text-stone-600">loss{maxLossesPerDay !== 1 ? 'es' : ''} per day</span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-5 sm:gap-6 sm:pl-6 sm:border-l sm:border-stone-200/70">
+                      <div className="flex items-center gap-4 sm:gap-5 sm:pl-5 sm:border-l sm:border-stone-200/70">
                         <div>
-                          <p className="text-sm font-medium text-stone-600 mb-1">Consistency</p>
+                          <p className="text-base font-medium text-stone-600 mb-1">Consistency</p>
                           <p className={cn('text-2xl font-bold tabular-nums', stats?.ruleDaysBroke === 0 ? 'text-emerald-700' : 'text-amber-700')}>
                             {stats?.ruleConsistency ?? '—'}
                           </p>
                         </div>
                         {stats?.ruleTotalDays != null && stats.ruleTotalDays > 0 && (
-                          <p className="text-sm text-stone-600">
+                          <p className="text-base text-stone-600">
                             <span className="font-semibold text-stone-800">{stats.ruleDaysFollowed}</span> of {stats.ruleTotalDays} days followed
                             {stats.ruleDaysBroke > 0 && (
                               <span className={cn('block mt-0.5 font-medium', stats.ruleDaysBroke === 0 ? 'text-stone-500' : 'text-amber-700')}>
@@ -1000,41 +1127,55 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  {/* Insights */}
-                  <div className="card p-6 sm:p-7 bg-stone-50/60">
-                    <p className="text-sm font-semibold text-stone-800 mb-4">Insights</p>
-                    <ul className="space-y-4 text-sm text-stone-600 leading-relaxed">
-                      <li className="flex gap-2.5">
-                        <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
-                        <span>5-day rolling negative? Consider reducing size to limit drawdown.</span>
-                      </li>
-                      {stats?.breakevenWinRate != null && (
-                        <li
-                          className={cn(
-                            'flex gap-2.5',
-                            stats.aboveBreakeven === true && 'text-emerald-700',
-                            stats.aboveBreakeven === false && 'text-rose-700',
-                            stats.aboveBreakeven === null && 'text-stone-600'
-                          )}
-                        >
-                          <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span>
-                            Breakeven win rate <strong>{stats.breakevenWinRate}</strong>
-                            {stats.aboveBreakeven === true && ' — above it.'}
-                            {stats.aboveBreakeven === false && ' — below it; cut losses or improve wins.'}
-                          </span>
-                        </li>
-                      )}
-                    </ul>
+
+                  {/* Consecutive losses — same column, no empty space */}
+                  <div className="card overflow-hidden">
+                    <div className="card-header px-5 sm:px-6 py-3.5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+                        <div>
+                          <p className="text-base font-semibold text-stone-800">Consecutive losses</p>
+                          <p className="text-sm text-stone-500 mt-1">P(N in a row). Max observed: <strong className="text-stone-700">{stats?.maxConsecutiveLossesObserved ?? 0}</strong></p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-medium text-stone-500">Current streak</p>
+                          <p className={cn('text-xl font-bold tabular-nums', (stats?.currentLossStreak ?? 0) > 0 ? 'text-rose-600' : 'text-stone-400')}>
+                            {stats?.currentLossStreak ?? 0}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {stats?.consecutiveLossProbs && stats.consecutiveLossProbs.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-base">
+                          <thead>
+                            <tr className="border-b border-stone-200 bg-stone-50/80">
+                              <th className="text-left py-2.5 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider">N</th>
+                              <th className="text-right py-2.5 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider">Probability</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stats.consecutiveLossProbs.map((row, i) => (
+                              <tr key={row.streak} className={cn('border-b border-stone-100 hover:bg-stone-50/80 transition-colors', i % 2 === 1 && 'bg-stone-50/30')}>
+                                <td className="py-2.5 px-4 sm:px-5 font-medium text-stone-800 text-base">{row.streak}</td>
+                                <td className="py-2.5 px-4 sm:px-5 text-right tabular-nums font-medium text-stone-700 text-base">{row.probFormatted}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-5 py-4 text-center text-base text-stone-500">No loss data for this period.</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-6">
+                {/* Right column: PnL by month + Strategy by calendar month */}
+                <div className="space-y-5 flex flex-col">
                   {/* PnL by month */}
                   {stats?.monthsList && stats.monthsList.length > 0 && (
                     <div className="card overflow-hidden">
-                      <div className="card-header px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-                        <h3 className="text-sm font-semibold text-stone-800">PnL by month</h3>
+                      <div className="card-header px-5 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-base font-semibold text-stone-800">PnL by month</h3>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium text-stone-500">Sort</span>
                           <select
@@ -1060,12 +1201,12 @@ export default function App() {
                           .map((month) => (
                             <li
                               key={month.monthKey}
-                              className="flex items-center justify-between px-5 sm:px-6 py-3.5 hover:bg-stone-50/80 transition-colors"
+                              className="flex items-center justify-between px-5 sm:px-6 py-3 hover:bg-stone-50/80 transition-colors"
                             >
-                              <span className="text-sm font-medium text-stone-800">{month.label}</span>
+                              <span className="text-base font-medium text-stone-800">{month.label}</span>
                               <span
                                 className={cn(
-                                  'text-sm font-semibold tabular-nums',
+                                  'text-base font-semibold tabular-nums',
                                   month.pnl > 0 && 'text-emerald-600',
                                   month.pnl < 0 && 'text-rose-600',
                                   month.pnl === 0 && 'text-stone-400'
@@ -1081,20 +1222,20 @@ export default function App() {
                   {/* Strategy by calendar month */}
                   {stats?.calendarMonthAvgList && stats.calendarMonthAvgList.length > 0 && (
                     <div className="card overflow-hidden">
-                      <div className="card-header px-5 sm:px-6 py-4">
-                        <p className="text-sm font-semibold text-stone-800">Strategy by calendar month</p>
-                        <p className="text-sm text-stone-500 mt-1">Full years only, worst to best. Excludes {new Date().getFullYear()}.</p>
+                      <div className="card-header px-5 sm:px-6 py-3.5">
+                        <p className="text-base font-semibold text-stone-800">Strategy by calendar month</p>
+                        <p className="text-base text-stone-500 mt-1">Full years only, worst to best. Excludes {new Date().getFullYear()}.</p>
                       </div>
                       <ul className="divide-y divide-stone-100 max-h-60 overflow-y-auto">
                         {stats.calendarMonthAvgList.map((row) => (
                           <li
                             key={row.name}
-                            className="flex items-center justify-between px-5 sm:px-6 py-3.5 hover:bg-stone-50/80 transition-colors"
+                            className="flex items-center justify-between px-5 sm:px-6 py-3 hover:bg-stone-50/80 transition-colors"
                           >
-                            <span className="text-sm font-medium text-stone-800">{row.name}</span>
+                            <span className="text-base font-medium text-stone-800">{row.name}</span>
                             <span
                               className={cn(
-                                'text-sm font-semibold tabular-nums',
+                                'text-base font-semibold tabular-nums',
                                 row.avgPnl > 0 && 'text-emerald-600',
                                 row.avgPnl < 0 && 'text-rose-600',
                                 row.avgPnl === 0 && 'text-stone-400'
@@ -1111,56 +1252,15 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Consecutive losses — full width */}
-              {stats?.consecutiveLossProbs && stats.consecutiveLossProbs.length > 0 && (
-                <section className="space-y-6">
-                  <h2 className="section-title">Risk</h2>
-                  <div className="card overflow-hidden">
-                    <div className="card-header px-5 sm:px-6 py-5">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
-                        <div>
-                          <p className="text-sm font-semibold text-stone-800">Consecutive losses vs. probability</p>
-                          <p className="text-sm text-stone-500 mt-1">P(N losses in a row) from your loss rate. Max observed: <strong className="text-stone-700">{stats?.maxConsecutiveLossesObserved ?? 0}</strong></p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-medium text-stone-500">Current loss streak</p>
-                          <p className={cn('text-2xl font-bold tabular-nums mt-1', (stats?.currentLossStreak ?? 0) > 0 ? 'text-rose-600' : 'text-stone-400')}>
-                            {stats?.currentLossStreak ?? 0}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-stone-200 bg-stone-50/80">
-                            <th className="text-left py-4 px-5 sm:px-6 text-xs font-semibold text-stone-600 uppercase tracking-wider">Losses in a row</th>
-                            <th className="text-right py-4 px-5 sm:px-6 text-xs font-semibold text-stone-600 uppercase tracking-wider">Probability</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {stats.consecutiveLossProbs.map((row, i) => (
-                            <tr key={row.streak} className={cn('border-b border-stone-100 hover:bg-stone-50/80 transition-colors', i % 2 === 1 && 'bg-stone-50/30')}>
-                              <td className="py-3.5 px-5 sm:px-6 font-medium text-stone-800">{row.streak}</td>
-                              <td className="py-3.5 px-5 sm:px-6 text-right tabular-nums font-medium text-stone-700">{row.probFormatted}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </section>
-              )}
-
               {/* Activity — Recent trades */}
-              <section className="space-y-6">
+              <section className="space-y-4">
                 <h2 className="section-title">Activity</h2>
                 <div className="card overflow-hidden">
-                  <div className="card-header px-5 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+                  <div className="card-header px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                     <h3 className="text-lg font-semibold text-stone-900">Recent trades</h3>
                     {tradesTotalPages > 1 && (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-stone-500 tabular-nums">
+                        <span className="text-base text-stone-500 tabular-nums">
                           {(currentTradesPage - 1) * TRADES_PAGE_SIZE + 1}–{Math.min(currentTradesPage * TRADES_PAGE_SIZE, groupedTradesForActivity.length)} of {groupedTradesForActivity.length}
                         </span>
                         <button
@@ -1189,13 +1289,13 @@ export default function App() {
                     <table className="w-full border-collapse" role="table">
                       <thead>
                         <tr className="border-b border-stone-200 bg-stone-50/80">
-                          <th className="text-left py-4 pl-5 pr-2 sm:pl-6 sm:pr-3 text-xs font-semibold text-stone-600 uppercase tracking-wider w-0" aria-label="Expand" />
-                          <th className="text-left py-4 px-4 sm:px-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-[7rem] sm:w-36">Date</th>
-                          <th className="text-left py-4 px-4 sm:px-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Underlying</th>
-                          <th className="text-left py-4 px-4 sm:px-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-22 sm:w-28">Expiry</th>
-                          <th className="text-left py-4 px-4 sm:px-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-14 sm:w-16">Type</th>
-                          <th className="text-right py-4 px-4 sm:px-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-18 sm:w-22">Strike</th>
-                          <th className="text-right py-4 pr-5 pl-4 sm:pr-6 sm:pl-5 text-xs font-semibold text-stone-600 uppercase tracking-wider w-24 sm:w-28">PnL</th>
+                          <th className="text-left py-3 pl-5 pr-2 sm:pl-6 sm:pr-3 text-sm font-semibold text-stone-600 uppercase tracking-wider w-0" aria-label="Expand" />
+                          <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-[7rem] sm:w-36">Date</th>
+                          <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Underlying</th>
+                          <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-22 sm:w-28">Expiry</th>
+                          <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-14 sm:w-16">Type</th>
+                          <th className="text-right py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-18 sm:w-22">Strike</th>
+                          <th className="text-right py-3 pr-5 pl-4 sm:pr-6 sm:pl-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-24 sm:w-28">PnL</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1222,30 +1322,30 @@ export default function App() {
                                   isExpanded && 'bg-stone-50/60'
                                 )}
                               >
-                                <td className="py-3.5 pl-5 pr-2 sm:pl-6 sm:pr-3 align-middle w-0">
+                                <td className="py-3 pl-5 pr-2 sm:pl-6 sm:pr-3 align-middle w-0">
                                   {hasFills ? (
                                     <ChevronDown className={cn('w-4 h-4 text-stone-400 shrink-0 transition-transform', isExpanded && 'rotate-180')} aria-hidden />
                                   ) : (
                                     <span className="w-4 inline-block" aria-hidden />
                                   )}
                                 </td>
-                                <td className="py-3.5 px-4 sm:px-5 text-sm text-stone-600 tabular-nums whitespace-nowrap">
+                                <td className="py-3 px-4 sm:px-5 text-base text-stone-600 tabular-nums whitespace-nowrap">
                                   {format(trade.date, 'MMM d, yyyy')}
                                 </td>
-                                <td className="py-3.5 px-4 sm:px-5 text-sm font-semibold text-stone-900">{occ?.underlying ?? '—'}</td>
-                                <td className="py-3.5 px-4 sm:px-5 text-sm text-stone-600 tabular-nums whitespace-nowrap">{occ ? format(new Date(occ.expiration), 'MMM d, yyyy') : '—'}</td>
-                                <td className="py-3.5 px-4 sm:px-5">
+                                <td className="py-3 px-4 sm:px-5 text-base font-semibold text-stone-900">{occ?.underlying ?? '—'}</td>
+                                <td className="py-3 px-4 sm:px-5 text-base text-stone-600 tabular-nums whitespace-nowrap">{occ ? format(new Date(occ.expiration), 'MMM d, yyyy') : '—'}</td>
+                                <td className="py-3 px-4 sm:px-5">
                                   {occ ? (
-                                    <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-semibold', occ.optionType === 'Call' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')}>
+                                    <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-semibold', occ.optionType === 'Call' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')}>
                                       {occ.optionType}
                                     </span>
                                   ) : '—'}
                                 </td>
-                                <td className="py-3.5 px-4 sm:px-5 text-right text-sm tabular-nums text-stone-700 font-medium">{occ != null ? `$${occ.strike.toFixed(2)}` : '—'}</td>
-                                <td className="py-3.5 pr-5 pl-4 sm:pr-6 sm:pl-5 text-right">
+                                <td className="py-3 px-4 sm:px-5 text-right text-base tabular-nums text-stone-700 font-medium">{occ != null ? `$${occ.strike.toFixed(2)}` : '—'}</td>
+                                <td className="py-3 pr-5 pl-4 sm:pr-6 sm:pl-5 text-right">
                                   <span
                                     className={cn(
-                                      'text-sm font-semibold tabular-nums',
+                                      'text-base font-semibold tabular-nums',
                                       trade.pnl > 0 && 'text-emerald-600',
                                       trade.pnl < 0 && 'text-rose-600',
                                       trade.pnl === 0 && 'text-stone-400'
@@ -1257,12 +1357,12 @@ export default function App() {
                               </tr>
                               {isExpanded && hasFills && (
                                 <tr className="bg-stone-50/60">
-                                  <td colSpan={7} className="px-5 sm:px-6 py-5 align-top border-b border-stone-100">
-                                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
-                                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Fills ({underlyingFills.length})</p>
-                                      <span className="font-mono text-xs text-stone-400" title="OCC symbol">{trade.symbol}</span>
+                                  <td colSpan={7} className="px-5 sm:px-6 py-4 align-top border-b border-stone-100">
+                                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
+                                      <p className="text-sm font-semibold text-stone-500 uppercase tracking-wider">Fills ({underlyingFills.length})</p>
+                                      <span className="font-mono text-sm text-stone-400" title="OCC symbol">{trade.symbol}</span>
                                     </div>
-                                    <table className="w-full text-sm border-collapse">
+                                    <table className="w-full text-base border-collapse">
                                       <thead>
                                         <tr className="text-stone-500">
                                           <th className="text-left py-2 pr-4 font-medium">Type</th>
@@ -1274,7 +1374,7 @@ export default function App() {
                                         {underlyingFills.map((fill, j) => (
                                           <tr key={j} className="border-t border-stone-100">
                                             <td className="py-2 pr-4">
-                                              <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-semibold', fill.type === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>
+                                              <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-semibold', fill.type === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>
                                                 {fill.type}
                                               </span>
                                             </td>
@@ -1301,12 +1401,12 @@ export default function App() {
         )}
       </main>
 
-      <footer className="mt-auto py-10 border-t border-stone-200/80 bg-white/70">
-        <div className="max-w-5xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-stone-500">TradePulse · Webull options PnL. Data stays in your browser.</p>
+      <footer className="mt-auto py-6 sm:py-8 border-t border-stone-200 bg-white/80">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-base text-stone-500">TradePulse · Webull options PnL. Data stays in your browser.</p>
           <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">Privacy</a>
-            <a href="#" className="text-sm text-stone-500 hover:text-stone-800 transition-colors">Terms</a>
+            <a href="#" className="text-base text-stone-500 hover:text-stone-800 transition-colors">Privacy</a>
+            <a href="#" className="text-base text-stone-500 hover:text-stone-800 transition-colors">Terms</a>
           </div>
         </div>
       </footer>
