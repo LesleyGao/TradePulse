@@ -165,7 +165,7 @@ export default function App() {
     });
   }, [pnlData, chartPeriod]);
 
-  const TRADES_PAGE_SIZE = 10;
+  const TRADES_PAGE_SIZE = 20;
   const OPTION_MULTIPLIER = 100; // 1 contract = 100 shares
   /** Same symbol on the same day = 1 trade. Group by date+symbol. PnL = (contracts × sell price) − (contracts × buy price) × 100. */
   const groupedTrades = useMemo(() => {
