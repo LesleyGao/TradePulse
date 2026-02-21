@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { 
   LineChart, 
   Line, 
@@ -156,6 +156,7 @@ export default function App() {
   const [monthSort, setMonthSort] = useState<'best' | 'worst' | 'date'>('best');
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** OCC-style option symbols only: used for PnL chart, total PnL, all stats, and Recent trades. */
   const tradesForActivity = useMemo(
@@ -298,6 +299,9 @@ export default function App() {
         localStorage.setItem(SAVED_CSV_KEY, text);
       } catch {
         // ignore quota or other storage errors
+      }
+      if ('files' in e.target && e.target instanceof HTMLInputElement) {
+        e.target.value = '';
       }
     } catch (err) {
       setError('Could not read the file. Please upload a valid Webull options CSV.');
@@ -596,6 +600,27 @@ export default function App() {
             </nav>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
+            {page === 'dashboard' && trades.length > 0 && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  aria-label="Upload CSV to update data"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-1"
+                  title="Upload another CSV to replace data"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload CSV
+                </button>
+              </>
+            )}
             {page === 'dashboard' && trades.length > 0 && yearsWithData.length > 0 && (
               <>
                 <span className="text-xs font-medium text-stone-500 hidden sm:inline">Period</span>
@@ -618,7 +643,11 @@ export default function App() {
             {page === 'dashboard' && trades.length > 0 && (
               <button
                 type="button"
-                onClick={clearData}
+                onClick={() => {
+                  if (window.confirm('Clear all uploaded data? This cannot be undone.')) {
+                    clearData();
+                  }
+                }}
                 className="text-xs font-medium text-stone-500 hover:text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-1"
                 title="Clear all uploaded data"
               >
@@ -720,6 +749,23 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="space-y-10 sm:space-y-12"
             >
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-rose-50 text-rose-800 px-4 py-3 rounded-xl text-base font-medium border border-rose-200 shadow-sm flex items-center justify-between gap-4"
+                >
+                  <span>{error}</span>
+                  <button
+                    type="button"
+                    onClick={() => setError(null)}
+                    className="text-rose-600 hover:text-rose-800 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 rounded p-1"
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </motion.div>
+              )}
               {/* PnL chart — at top, no heading */}
               <section className="space-y-4">
                 <div
