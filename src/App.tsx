@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   LineChart, 
   Line, 
@@ -23,6 +23,7 @@ import {
   Activity,
   FileText,
   Info,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   Trash2,
@@ -112,14 +113,22 @@ export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [trades, setTrades] = useState<Trade[]>([]);
   const [showSma, setShowSma] = useState(true);
-  const [showAllTrades, setShowAllTrades] = useState(false);
+  const [chartPeriod, setChartPeriod] = useState<'daily' | 'monthly' | 'yearly'>('daily');
+  const [tradesPage, setTradesPage] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [chartHovered, setChartHovered] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
   const [maxLossesPerDay, setMaxLossesPerDay] = useState(2); // user's rule: stop after this many losses in a day
   const [error, setError] = useState<string | null>(null);
 
-  const pnlData = useMemo(() => calculatePnl(trades), [trades]);
+  /** Exclude "TSLA" and "TSLA CoveredStock" from recent trades and all derived data. */
+  const isSymbolExcluded = useCallback((symbol: string) => /^TSLA(\s+CoveredStock)?$/i.test(symbol.trim()), []);
+  const filteredTrades = useMemo(
+    () => trades.filter((t) => !isSymbolExcluded(t.symbol)),
+    [trades, isSymbolExcluded]
+  );
+
+  const pnlData = useMemo(() => calculatePnl(filteredTrades), [filteredTrades]);
   const pnlByDate = useMemo(() => {
     const map: Record<string, number> = {};
     pnlData.forEach((p) => {
@@ -128,7 +137,35 @@ export default function App() {
     return map;
   }, [pnlData]);
 
-  const RECENT_TRADES_LIMIT = 20;
+  /** Chart data aggregated by selected period (daily, monthly, yearly). */
+  const chartData = useMemo(() => {
+    if (pnlData.length === 0) return [];
+    if (chartPeriod === 'daily') return pnlData;
+
+    const groupKey = (d: string) =>
+      chartPeriod === 'monthly' ? d.slice(0, 7) : d.slice(0, 4); // yyyy-MM or yyyy
+    const groups: Record<string, { pnl: number; dateLabel: string }> = {};
+    for (const p of pnlData) {
+      const key = groupKey(p.date);
+      if (!groups[key]) {
+        groups[key] = { pnl: 0, dateLabel: chartPeriod === 'monthly' ? `${key}-01` : `${key}-01-01` };
+      }
+      groups[key].pnl += p.pnl;
+    }
+    const sortedKeys = Object.keys(groups).sort();
+    let cumulative = 0;
+    return sortedKeys.map((key) => {
+      cumulative += groups[key].pnl;
+      return {
+        date: groups[key].dateLabel,
+        timestamp: new Date(groups[key].dateLabel + 'T12:00:00').getTime(),
+        pnl: groups[key].pnl,
+        cumulativePnl: cumulative,
+      } as PnlPoint;
+    });
+  }, [pnlData, chartPeriod]);
+
+  const TRADES_PAGE_SIZE = 10;
   const OPTION_MULTIPLIER = 100; // 1 contract = 100 shares
   /** Same symbol on the same day = 1 trade. Group by date+symbol. PnL = (contracts × sell price) − (contracts × buy price) × 100. */
   const groupedTrades = useMemo(() => {
@@ -137,7 +174,7 @@ export default function App() {
       string,
       { date: Date; symbol: string; netQty: number; amount: number; pnl: number }
     >();
-    for (const t of trades) {
+    for (const t of filteredTrades) {
       const k = key(t);
       const existing = map.get(k);
       const qty = t.type === 'BUY' ? t.quantity : -t.quantity;
@@ -164,11 +201,21 @@ export default function App() {
         pnl: g.pnl,
       }))
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [trades]);
-  const displayedTrades = showAllTrades
-    ? groupedTrades
-    : groupedTrades.slice(0, RECENT_TRADES_LIMIT);
-  const hasMoreTrades = groupedTrades.length > RECENT_TRADES_LIMIT;
+  }, [filteredTrades]);
+
+  const tradesTotalPages = Math.max(1, Math.ceil(groupedTrades.length / TRADES_PAGE_SIZE));
+  const currentTradesPage = Math.min(tradesPage, tradesTotalPages);
+  const displayedTrades = groupedTrades.slice(
+    (currentTradesPage - 1) * TRADES_PAGE_SIZE,
+    currentTradesPage * TRADES_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setTradesPage(1);
+  }, [groupedTrades.length]);
+  useEffect(() => {
+    if (tradesPage > tradesTotalPages && tradesTotalPages >= 1) setTradesPage(tradesTotalPages);
+  }, [tradesPage, tradesTotalPages]);
 
   const loadSampleData = () => {
     setError(null);
@@ -619,32 +666,54 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h3 className="text-base font-bold text-stone-900">PnL chart</h3>
-                      <p className="text-sm text-stone-500 mt-0.5">Cumulative by day. Below SMA = consider reducing size. Hover to highlight stats.</p>
+                      <p className="text-sm text-stone-500 mt-0.5">
+                        {chartPeriod === 'daily' && 'Cumulative by day. Below SMA = consider reducing size. '}
+                        Hover to highlight stats.
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-stone-500">20-day SMA</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowSma(!showSma)}
-                        className={cn(
-                          'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
-                          showSma ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                        )}
-                        aria-pressed={showSma}
-                      >
-                        {showSma ? 'On' : 'Off'}
-                      </button>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-1 p-0.5 rounded-lg bg-stone-100">
+                        {(['daily', 'monthly', 'yearly'] as const).map((period) => (
+                          <button
+                            key={period}
+                            type="button"
+                            onClick={() => setChartPeriod(period)}
+                            className={cn(
+                              'px-3 py-1.5 text-sm font-medium rounded-md capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
+                              chartPeriod === period ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                            )}
+                          >
+                            {period}
+                          </button>
+                        ))}
+                      </div>
+                      {chartPeriod === 'daily' && (
+                        <>
+                          <span className="text-xs font-medium text-stone-500">20-day SMA</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowSma(!showSma)}
+                            className={cn(
+                              'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2',
+                              showSma ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                            )}
+                            aria-pressed={showSma}
+                          >
+                            {showSma ? 'On' : 'Off'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {pnlData.length > 0 && (
+                  {chartData.length > 0 && (
                     <div className="flex items-center gap-4 text-xs text-stone-500">
                       <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-stone-800 rounded-full" />Cumulative</span>
-                      {showSma && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />20-day SMA</span>}
+                      {chartPeriod === 'daily' && showSma && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />20-day SMA</span>}
                     </div>
                   )}
                 </div>
                 <div className="h-[340px] sm:h-[380px] w-full border-t border-stone-100 bg-stone-50/50">
-                  {pnlData.length === 0 ? (
+                  {chartData.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
                       <LineChartIcon className="w-10 h-10 text-stone-300" strokeWidth={1.5} />
                       <p className="text-sm font-medium text-stone-500">No PnL data yet</p>
@@ -653,8 +722,8 @@ export default function App() {
                   ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      key={`pnl-chart-${pnlData.length}-${pnlData[pnlData.length - 1]?.date ?? ''}`}
-                      data={pnlData}
+                      key={`pnl-chart-${chartPeriod}-${chartData.length}-${chartData[chartData.length - 1]?.date ?? ''}`}
+                      data={chartData}
                       margin={{ top: 16, right: 16, left: 12, bottom: 12 }}
                     >
                       <defs>
@@ -670,7 +739,7 @@ export default function App() {
                         tickLine={false}
                         tick={{ fontSize: 12, fill: '#52525b', fontFamily: 'inherit' }}
                         dy={8}
-                        tickFormatter={(value) => format(new Date(value + 'T12:00:00'), 'MMM d')}
+                        tickFormatter={(value) => format(new Date(value + 'T12:00:00'), chartPeriod === 'yearly' ? 'yyyy' : chartPeriod === 'monthly' ? 'MMM yyyy' : 'MMM d')}
                         padding={{ left: 8, right: 8 }}
                         interval="preserveStartEnd"
                         minTickGap={36}
@@ -700,21 +769,24 @@ export default function App() {
                         content={({ active, payload, label }) => {
                           if (!active || !payload?.length || !label) return null;
                           const point = payload[0]?.payload as PnlPoint;
+                          const dateLabel = format(
+                            new Date(label + 'T12:00:00'),
+                            chartPeriod === 'yearly' ? 'yyyy' : chartPeriod === 'monthly' ? 'MMMM yyyy' : 'EEEE, MMM d, yyyy'
+                          );
+                          const periodLabel = chartPeriod === 'daily' ? 'Daily' : chartPeriod === 'monthly' ? 'Monthly' : 'Yearly';
                           return (
                             <div className="overflow-hidden">
                               <div className="px-4 py-2.5 bg-stone-50 border-b border-stone-100">
-                                <div className="font-semibold text-stone-900 text-sm">
-                                  {format(new Date(label + 'T12:00:00'), 'EEEE, MMM d, yyyy')}
-                                </div>
+                                <div className="font-semibold text-stone-900 text-sm">{dateLabel}</div>
                               </div>
                               <div className="px-4 py-3 space-y-2">
                                 <div className="flex justify-between gap-6">
-                                  <span className="text-stone-500 text-sm">Daily P/L</span>
+                                  <span className="text-stone-500 text-sm">{periodLabel} P/L</span>
                                   <span className={cn('font-semibold tabular-nums text-sm', point.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
                                     {point.pnl >= 0 ? '+' : ''}${point.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </div>
-                                {point.rolling5DayPnl != null && (
+                                {chartPeriod === 'daily' && point.rolling5DayPnl != null && (
                                   <div className="flex justify-between gap-6">
                                     <span className="text-stone-500 text-sm">5-day rolling</span>
                                     <span className={cn('font-semibold tabular-nums text-sm', point.rolling5DayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
@@ -744,7 +816,7 @@ export default function App() {
                         animationDuration={1200}
                         animationEasing="ease-out"
                       />
-                      {showSma && (
+                      {chartPeriod === 'daily' && showSma && (
                         <Line
                           type="monotone"
                           dataKey="sma20"
@@ -769,17 +841,35 @@ export default function App() {
                   <div className="px-4 sm:px-6 py-4 border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-stone-900">Recent trades</h3>
-                      <p className="text-sm text-stone-500 mt-0.5">{groupedTrades.length} trade{groupedTrades.length !== 1 ? 's' : ''} · Newest first</p>
+                      <p className="text-sm text-stone-500 mt-0.5">
+                        {groupedTrades.length} trade{groupedTrades.length !== 1 ? 's' : ''} · Newest first
+                        {tradesTotalPages > 1 && ` · Page ${currentTradesPage} of ${tradesTotalPages}`}
+                      </p>
                     </div>
-                    {hasMoreTrades && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllTrades((prev) => !prev)}
-                        className="text-sm font-medium text-stone-600 hover:text-stone-900 py-2 px-3 rounded-lg hover:bg-stone-100 transition-colors w-fit flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
-                      >
-                        {showAllTrades ? 'Show less' : 'View all'}
-                        <ChevronRight className={cn('w-4 h-4 transition-transform', showAllTrades && 'rotate-90')} />
-                      </button>
+                    {tradesTotalPages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setTradesPage((p) => Math.max(1, p - 1))}
+                          disabled={currentTradesPage <= 1}
+                          className="p-2 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 disabled:pointer-events-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
+                          aria-label="Previous page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="text-sm text-stone-500 min-w-[4rem] text-center tabular-nums">
+                          {currentTradesPage} / {tradesTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTradesPage((p) => Math.min(tradesTotalPages, p + 1))}
+                          disabled={currentTradesPage >= tradesTotalPages}
+                          className="p-2 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 disabled:pointer-events-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
+                          aria-label="Next page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="overflow-x-auto">
@@ -799,7 +889,7 @@ export default function App() {
                         const dayKey = format(trade.date, 'yyyy-MM-dd');
                         const tradeKey = `${dayKey}_${trade.symbol}`;
                         const isExpanded = expandedTradeKey === tradeKey;
-                        const underlyingFills = trades.filter(
+                        const underlyingFills = filteredTrades.filter(
                           (t) => format(t.date, 'yyyy-MM-dd') === dayKey && t.symbol === trade.symbol
                         );
                         return (
