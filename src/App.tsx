@@ -834,37 +834,31 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Activity */}
+              {/* Activity — Recent trades */}
               <section>
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-4">Activity</h2>
-                <div className="bg-white rounded-2xl border border-stone-200/80 shadow-sm overflow-hidden">
-                  <div className="px-4 sm:px-6 py-4 border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-stone-900">Recent trades</h3>
-                      <p className="text-sm text-stone-500 mt-0.5">
-                        {groupedTrades.length} trade{groupedTrades.length !== 1 ? 's' : ''} · Newest first
-                        {tradesTotalPages > 1 && ` · Page ${currentTradesPage} of ${tradesTotalPages}`}
-                      </p>
-                    </div>
+                <div className="rounded-2xl border border-stone-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="px-4 sm:px-6 py-4 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold text-stone-900">Recent trades</h3>
                     {tradesTotalPages > 1 && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-stone-500 tabular-nums">
+                          {(currentTradesPage - 1) * TRADES_PAGE_SIZE + 1}–{Math.min(currentTradesPage * TRADES_PAGE_SIZE, groupedTrades.length)} of {groupedTrades.length}
+                        </span>
                         <button
                           type="button"
                           onClick={() => setTradesPage((p) => Math.max(1, p - 1))}
                           disabled={currentTradesPage <= 1}
-                          className="p-2 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 disabled:pointer-events-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
+                          className="p-1.5 rounded text-stone-500 hover:bg-stone-100 disabled:opacity-40"
                           aria-label="Previous page"
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </button>
-                        <span className="text-sm text-stone-500 min-w-[4rem] text-center tabular-nums">
-                          {currentTradesPage} / {tradesTotalPages}
-                        </span>
                         <button
                           type="button"
                           onClick={() => setTradesPage((p) => Math.min(tradesTotalPages, p + 1))}
                           disabled={currentTradesPage >= tradesTotalPages}
-                          className="p-2 rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:opacity-40 disabled:pointer-events-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2"
+                          className="p-1.5 rounded text-stone-500 hover:bg-stone-100 disabled:opacity-40"
                           aria-label="Next page"
                         >
                           <ChevronRight className="w-4 h-4" />
@@ -872,118 +866,95 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full" role="table">
                       <thead>
-                        <tr className="bg-stone-50">
-                          <th className="sticky left-0 z-10 bg-stone-50 px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider border-b border-stone-100">Date</th>
-                          <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider border-b border-stone-100">Symbol</th>
-                          <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider border-b border-stone-100">Type</th>
-                          <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider border-b border-stone-100">Contracts</th>
-                          <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider border-b border-stone-100">Price</th>
-                          <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider text-right border-b border-stone-100">PnL</th>
+                        <tr className="border-b border-stone-200 bg-stone-50/80">
+                          <th className="text-left py-3 px-4 sm:px-6 text-xs font-semibold text-stone-500 uppercase tracking-wider w-[7.5rem] sm:w-40">Date</th>
+                          <th className="text-left py-3 px-4 sm:px-6 text-xs font-semibold text-stone-500 uppercase tracking-wider">Symbol</th>
+                          <th className="text-right py-3 px-4 sm:px-6 text-xs font-semibold text-stone-500 uppercase tracking-wider w-28">PnL</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-100">
-                      {displayedTrades.map((trade, i) => {
-                        const dayKey = format(trade.date, 'yyyy-MM-dd');
-                        const tradeKey = `${dayKey}_${trade.symbol}`;
-                        const isExpanded = expandedTradeKey === tradeKey;
-                        const underlyingFills = filteredTrades.filter(
-                          (t) => format(t.date, 'yyyy-MM-dd') === dayKey && t.symbol === trade.symbol
-                        );
-                        return (
-                          <React.Fragment key={`${dayKey}-${trade.symbol}-${i}`}>
-                          <tr
-                            className="hover:bg-stone-50/80 transition-colors"
-                          >
-                            <td className="sticky left-0 z-10 bg-inherit px-4 sm:px-6 py-3 text-sm text-stone-600 whitespace-nowrap">
-                              {new Intl.DateTimeFormat('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              }).format(trade.date)}
-                            </td>
-                            <td className="px-4 sm:px-6 py-3">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedTradeKey((k) => (k === tradeKey ? null : tradeKey))}
-                                className={cn(
-                                  'font-mono text-sm font-medium text-stone-900 inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 -mx-0.5 hover:bg-stone-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-1 transition-colors',
-                                  isExpanded && 'bg-stone-100'
-                                )}
-                              >
-                                {trade.symbol}
-                                <ChevronDown
-                                  className={cn('w-4 h-4 text-stone-400 shrink-0 transition-transform', isExpanded && 'rotate-180')}
-                                />
-                              </button>
-                            </td>
-                            <td className="px-4 sm:px-6 py-3">
-                              <span
-                                className={cn(
-                                  'text-xs font-semibold px-2 py-0.5 rounded',
-                                  trade.type === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                                )}
-                              >
-                                {trade.type}
-                              </span>
-                            </td>
-                            <td className="px-4 sm:px-6 py-3 text-sm text-stone-600">{trade.quantity}</td>
-                            <td className="px-4 sm:px-6 py-3 text-sm text-stone-600 tabular-nums">${trade.price.toFixed(2)}</td>
-                            <td className="px-4 sm:px-6 py-3 text-sm font-medium text-right tabular-nums">
-                              {trade.pnl !== 0 ? (
-                                <span className={trade.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                                  {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              ) : (
-                                <span className="text-stone-400">$0.00</span>
-                              )}
-                            </td>
-                          </tr>
-                          {isExpanded && underlyingFills.length > 0 && (
-                            <tr className="bg-stone-50/80">
-                              <td colSpan={6} className="px-4 sm:px-6 py-3 align-top">
-                                <div className="text-xs text-stone-500 mb-2">All fills</div>
-                                <div className="border border-stone-200 rounded-lg overflow-hidden">
-                                  <table className="w-full text-left border-collapse">
-                                    <thead>
-                                      <tr className="bg-stone-100">
-                                        <th className="px-3 py-2 text-xs font-semibold text-stone-500 uppercase">Type</th>
-                                        <th className="px-3 py-2 text-xs font-semibold text-stone-500 uppercase">Contracts</th>
-                                        <th className="px-3 py-2 text-xs font-semibold text-stone-500 uppercase text-right">Price</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-stone-100">
-                                      {underlyingFills.map((fill, j) => (
-                                        <tr key={j} className="bg-white">
-                                          <td className="px-3 py-2">
-                                            <span
-                                              className={cn(
-                                                'text-xs font-semibold px-2 py-0.5 rounded',
-                                                fill.type === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                                              )}
-                                            >
-                                              {fill.type}
-                                            </span>
-                                          </td>
-                                          <td className="px-3 py-2 text-stone-600">{fill.quantity}</td>
-                                          <td className="px-3 py-2 text-right tabular-nums text-stone-600">${fill.price.toFixed(2)}</td>
+                      <tbody>
+                        {displayedTrades.map((trade, i) => {
+                          const dayKey = format(trade.date, 'yyyy-MM-dd');
+                          const tradeKey = `${dayKey}_${trade.symbol}`;
+                          const isExpanded = expandedTradeKey === tradeKey;
+                          const underlyingFills = filteredTrades.filter(
+                            (t) => format(t.date, 'yyyy-MM-dd') === dayKey && t.symbol === trade.symbol
+                          );
+                          const hasFills = underlyingFills.length > 0;
+                          return (
+                            <React.Fragment key={`${dayKey}-${trade.symbol}-${i}`}>
+                              <tr className={cn('border-b border-stone-100 hover:bg-stone-50/70 transition-colors', isExpanded && 'bg-stone-50/50')}>
+                                <td className="py-3.5 px-4 sm:px-6 text-sm text-stone-600 tabular-nums whitespace-nowrap">
+                                  {format(trade.date, 'MMM d, yyyy')}
+                                </td>
+                                <td className="py-3.5 px-4 sm:px-6">
+                                  <button
+                                    type="button"
+                                    onClick={() => hasFills && setExpandedTradeKey((k) => (k === tradeKey ? null : tradeKey))}
+                                    disabled={!hasFills}
+                                    className={cn(
+                                      'inline-flex items-center gap-1.5 text-left font-mono text-sm font-semibold text-stone-900',
+                                      hasFills && 'hover:text-stone-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-1 rounded',
+                                      !hasFills && 'cursor-default'
+                                    )}
+                                  >
+                                    {trade.symbol}
+                                    {hasFills && <ChevronDown className={cn('w-4 h-4 text-stone-400 shrink-0', isExpanded && 'rotate-180')} />}
+                                  </button>
+                                </td>
+                                <td className="py-3.5 px-4 sm:px-6 text-right">
+                                  <span
+                                    className={cn(
+                                      'text-sm font-semibold tabular-nums',
+                                      trade.pnl > 0 && 'text-emerald-600',
+                                      trade.pnl < 0 && 'text-rose-600',
+                                      trade.pnl === 0 && 'text-stone-400'
+                                    )}
+                                  >
+                                    {trade.pnl !== 0 ? `${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                                  </span>
+                                </td>
+                              </tr>
+                              {isExpanded && hasFills && (
+                                <tr className="bg-stone-50/50">
+                                  <td colSpan={3} className="px-4 sm:px-6 py-4 align-top border-b border-stone-100">
+                                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Fills ({underlyingFills.length})</p>
+                                    <table className="w-full text-sm border-collapse">
+                                      <thead>
+                                        <tr className="text-stone-500">
+                                          <th className="text-left py-2 pr-4 font-medium">Type</th>
+                                          <th className="text-left py-2 pr-4 font-medium">Contracts</th>
+                                          <th className="text-right py-2 font-medium">Price</th>
                                         </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                      </thead>
+                                      <tbody className="text-stone-700">
+                                        {underlyingFills.map((fill, j) => (
+                                          <tr key={j} className="border-t border-stone-100">
+                                            <td className="py-2 pr-4">
+                                              <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-semibold', fill.type === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>
+                                                {fill.type}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 pr-4 tabular-nums">{fill.quantity}</td>
+                                            <td className="py-2 text-right tabular-nums">${fill.price.toFixed(2)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
               </section>
             </motion.div>
           )}
