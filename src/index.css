@@ -12,6 +12,10 @@
   }
   body {
     @apply antialiased text-zinc-900;
+    line-height: 1.6;
+  }
+  p {
+    line-height: 1.65;
   }
   button:focus-visible,
   a:focus-visible {
