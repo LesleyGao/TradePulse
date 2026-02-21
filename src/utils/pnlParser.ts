@@ -20,6 +20,8 @@ export interface PnlPoint {
   pnl: number;
   cumulativePnl: number;
   sma20?: number;
+  /** Sum of this day's pnl and the previous 4 days (for drawdown limit). */
+  rolling5DayPnl?: number;
 }
 
 function findCol(row: Record<string, unknown>, aliases: string[]): string | null {
@@ -269,6 +271,9 @@ export function calculatePnl(trades: Trade[]): PnlPoint[] {
       points[i].sma20 =
         window.reduce((a, p) => a + p.cumulativePnl, 0) / window.length;
     }
+    const rollingStart = Math.max(0, i - 4);
+    const rollingWindow = points.slice(rollingStart, i + 1);
+    points[i].rolling5DayPnl = rollingWindow.reduce((a, p) => a + p.pnl, 0);
   }
 
   return points;
