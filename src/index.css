@@ -27,9 +27,24 @@
   }
 }
 
-/* Section title — clear hierarchy, consistent spacing below */
+/* Layout — wider content, consistent section spacing */
+.page-width {
+  max-width: 88rem; /* 1408px — wider for readability */
+}
+
+/* Section — major content blocks with clear separation */
+.page-section {
+  @apply mb-14 last:mb-0;
+}
+
+/* Section title — clear hierarchy, consistent spacing */
 .section-title {
-  @apply text-xl font-semibold text-stone-800 tracking-tight mb-4;
+  @apply text-lg font-semibold text-stone-800 tracking-tight mb-1;
+  letter-spacing: -0.02em;
+}
+
+.section-desc {
+  @apply text-sm text-stone-500 mb-4;
 }
 
 /* Card surface — clean panels */
