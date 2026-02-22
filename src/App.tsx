@@ -153,7 +153,7 @@ export default function App() {
   const [chartHovered, setChartHovered] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
   const [maxLossesPerDay, setMaxLossesPerDay] = useState(2); // user's rule: stop after this many losses in a day
-  const [monthSort, setMonthSort] = useState<'best' | 'worst' | 'date'>('best');
+  const [monthSort, setMonthSort] = useState<'best' | 'worst' | 'date'>('date');
   const [calendarMonthSort, setCalendarMonthSort] = useState<'best' | 'worst' | 'date'>('worst');
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
