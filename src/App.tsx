@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, startTransition } from 'react';
 import { 
   LineChart, 
   Line, 
@@ -409,10 +409,18 @@ export default function App() {
 
     // Expectancy metric: expected $ per $1 risked = expectancy / |avgLoss| (only when there are losses)
     const absAvgLoss = losingTrades.length > 0 ? Math.abs(avgLoss) : 0;
-    // Avg % win and avg % loss per trade: use return % (PnL / cost from fills), then average
+    // Avg % win and avg % loss per trade: use return % (PnL / cost from fills), then average.
+    // Build fills lookup once (O(M)) instead of filtering per trade (O(N*M)).
+    const fillsByDaySymbol = new Map<string, typeof tradesForStats>();
+    for (const f of tradesForStats) {
+      const key = `${format(f.date, 'yyyy-MM-dd')}_${f.symbol}`;
+      const arr = fillsByDaySymbol.get(key) ?? [];
+      if (arr.length === 0) fillsByDaySymbol.set(key, arr);
+      arr.push(f);
+    }
     const returnPctFromFills = (grouped: { date: Date; symbol: string; type: 'BUY' | 'SELL'; quantity: number; price: number; pnl: number }) => {
       const dayKey = format(grouped.date, 'yyyy-MM-dd');
-      const fills = tradesForStats.filter((f) => format(f.date, 'yyyy-MM-dd') === dayKey && f.symbol === grouped.symbol);
+      const fills = fillsByDaySymbol.get(`${dayKey}_${grouped.symbol}`) ?? [];
       const costFromFills = fills.length > 0
         ? fills.filter((f) => f.type === grouped.type).reduce((sum, f) => sum + f.quantity * f.price * OPTION_MULTIPLIER, 0)
         : 0;
@@ -646,7 +654,9 @@ export default function App() {
                   value={statsPeriod === 'total' ? 'total' : statsPeriod}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setStatsPeriod(v === 'total' ? 'total' : parseInt(v, 10));
+                    startTransition(() => {
+                      setStatsPeriod(v === 'total' ? 'total' : parseInt(v, 10));
+                    });
                   }}
                   className="text-sm font-medium text-stone-800 bg-white border border-stone-200 rounded-lg py-2 pl-3 pr-9 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-2 cursor-pointer"
                   aria-label="View stats for period"
