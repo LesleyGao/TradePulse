@@ -489,11 +489,24 @@ export default function App() {
     const ruleConsistencyFormatted =
       ruleConsistencyPct != null ? `${ruleConsistencyPct.toFixed(1)}%` : '—';
 
-    // All months with PnL (for sortable list)
+    // PnL by month: include all months in period (Jan–Dec) even if no data yet. Add % return for sort/filter.
     const byMonth: Record<string, number> = {};
     for (const p of pnlData) {
       const monthKey = p.date.slice(0, 7); // yyyy-MM
       byMonth[monthKey] = (byMonth[monthKey] ?? 0) + p.pnl;
+    }
+    const costForGrouped = (grouped: { date: Date; symbol: string; type: 'BUY' | 'SELL'; quantity: number; price: number }) => {
+      const dayKey = format(grouped.date, 'yyyy-MM-dd');
+      const fills = fillsByDaySymbol.get(`${dayKey}_${grouped.symbol}`) ?? [];
+      const costFromFills = fills.length > 0
+        ? fills.filter((f) => f.type === grouped.type).reduce((sum, f) => sum + f.quantity * f.price * OPTION_MULTIPLIER, 0)
+        : 0;
+      return costFromFills > 0 ? costFromFills : grouped.quantity * grouped.price * OPTION_MULTIPLIER;
+    };
+    const byMonthCost: Record<string, number> = {};
+    for (const t of groupedTradesForStats) {
+      const monthKey = format(t.date, 'yyyy-MM');
+      byMonthCost[monthKey] = (byMonthCost[monthKey] ?? 0) + costForGrouped(t);
     }
     const formatMonthLabel = (yyyyMm: string) => {
       const [y, m] = yyyyMm.split('-');
@@ -501,31 +514,50 @@ export default function App() {
       return format(d, 'MMM yyyy');
     };
     const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const monthsList = Object.entries(byMonth).map(([monthKey, pnl]) => ({
-      monthKey,
-      label: formatMonthLabel(monthKey),
-      pnl,
-      pnlFormatted: currencyFmt.format(pnl),
-    }));
+    const yearsInData = [...new Set(pnlData.map((p) => p.date.slice(0, 4)))].map(Number).sort((a, b) => a - b);
+    const yearsToShow = statsPeriod === 'total' ? yearsInData : [statsPeriod as number];
+    const monthsList: { monthKey: string; label: string; pnl: number; pnlFormatted: string; pct: number | null; pctFormatted: string }[] = [];
+    for (const year of yearsToShow) {
+      for (let month = 1; month <= 12; month++) {
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        const pnl = byMonth[monthKey] ?? 0;
+        const cost = byMonthCost[monthKey] ?? 0;
+        const pct = cost > 0 ? (pnl / cost) * 100 : null;
+        monthsList.push({
+          monthKey,
+          label: formatMonthLabel(monthKey),
+          pnl,
+          pnlFormatted: currencyFmt.format(pnl),
+          pct,
+          pctFormatted: pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%' : '—',
+        });
+      }
+    }
 
-    // By calendar month (Jan–Dec): avg PnL across full years only → which month performs best/worst on avg
+    // By calendar month (Jan–Dec): avg % return across full years only → which month performs best/worst on avg
     const currentYear = new Date().getFullYear();
     const fullYearsMonths = monthsList.filter((m) => parseInt(m.monthKey.slice(0, 4), 10) < currentYear);
-    const byCalendarMonth = new Map<number, number[]>();
+    const byCalendarMonthPcts = new Map<number, number[]>();
     for (const m of fullYearsMonths) {
+      if (m.pct == null) continue;
       const monthNum = parseInt(m.monthKey.slice(5, 7), 10);
-      const arr = byCalendarMonth.get(monthNum) ?? [];
-      arr.push(m.pnl);
-      byCalendarMonth.set(monthNum, arr);
+      const arr = byCalendarMonthPcts.get(monthNum) ?? [];
+      if (arr.length === 0) byCalendarMonthPcts.set(monthNum, arr);
+      arr.push(m.pct);
     }
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const calendarMonthAvgList: { name: string; avgPnl: number; formatted: string }[] = [];
-    byCalendarMonth.forEach((pnls, monthNum) => {
-      const avgPnl = pnls.reduce((a, b) => a + b, 0) / pnls.length;
+    const calendarMonthAvgList: { name: string; avgPct: number | null; pctFormatted: string }[] = [];
+    for (let monthNum = 1; monthNum <= 12; monthNum++) {
+      const pcts = byCalendarMonthPcts.get(monthNum) ?? [];
+      const avgPct = pcts.length > 0 ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
       const name = monthNames[monthNum - 1] ?? '';
-      calendarMonthAvgList.push({ name, avgPnl, formatted: currencyFmt.format(avgPnl) });
-    });
-    calendarMonthAvgList.sort((a, b) => a.avgPnl - b.avgPnl);
+      calendarMonthAvgList.push({
+        name,
+        avgPct,
+        pctFormatted: avgPct != null ? (avgPct >= 0 ? '+' : '') + avgPct.toFixed(1) + '%' : '—',
+      });
+    }
+    calendarMonthAvgList.sort((a, b) => (a.avgPct ?? Infinity) - (b.avgPct ?? Infinity));
 
     return {
       totalPnl: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalPnl),
@@ -557,7 +589,7 @@ export default function App() {
       monthsList,
       calendarMonthAvgList,
     };
-  }, [pnlData, pnlDataForStats, groupedTradesForStats, tradesForStats, maxLossesPerDay]);
+  }, [pnlData, pnlDataForStats, groupedTradesForStats, tradesForStats, statsPeriod, maxLossesPerDay]);
 
   useEffect(() => {
     if (statsPeriod === 'total') return; /* user chose All time — don't override */
@@ -1253,8 +1285,8 @@ export default function App() {
 
                 {/* Right column: PnL by month + Strategy by calendar month */}
                 <div className="space-y-5 flex flex-col">
-                  {/* PnL by month */}
-                  {stats?.monthsList && stats.monthsList.length > 0 && (
+                  {/* PnL by month — only when a specific year is selected (hidden for All time) */}
+                  {statsPeriod !== 'total' && stats?.monthsList && stats.monthsList.length > 0 && (
                     <div className="card overflow-hidden">
                       <div className="card-header px-5 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
                         <h3 className="text-base font-semibold text-stone-800">PnL by month</h3>
@@ -1272,12 +1304,12 @@ export default function App() {
                           </select>
                         </div>
                       </div>
-                      <ul className="divide-y divide-stone-100 max-h-60 overflow-y-auto">
+                      <ul className="divide-y divide-stone-100">
                         {[...stats.monthsList]
                           .filter((m) => statsPeriod === 'total' || m.monthKey.startsWith(String(statsPeriod)))
                           .sort((a, b) => {
-                            if (monthSort === 'best') return b.pnl - a.pnl;
-                            if (monthSort === 'worst') return a.pnl - b.pnl;
+                            if (monthSort === 'best') return (b.pct ?? -Infinity) - (a.pct ?? -Infinity);
+                            if (monthSort === 'worst') return (a.pct ?? Infinity) - (b.pct ?? Infinity);
                             return a.monthKey.localeCompare(b.monthKey);
                           })
                           .map((month) => (
@@ -1289,26 +1321,26 @@ export default function App() {
                               <span
                                 className={cn(
                                   'text-base font-semibold tabular-nums',
-                                  month.pnl > 0 && 'text-emerald-600',
-                                  month.pnl < 0 && 'text-rose-600',
-                                  month.pnl === 0 && 'text-stone-400'
+                                  month.pct != null && month.pct > 0 && 'text-emerald-600',
+                                  month.pct != null && month.pct < 0 && 'text-rose-600',
+                                  (month.pct == null || month.pct === 0) && 'text-stone-400'
                                 )}
                               >
-                                {month.pnl !== 0 ? `${month.pnl >= 0 ? '+' : ''}${month.pnlFormatted}` : month.pnlFormatted}
+                                {month.pctFormatted}
                               </span>
                             </li>
                           ))}
                       </ul>
                     </div>
                   )}
-                  {/* Strategy by calendar month */}
-                  {stats?.calendarMonthAvgList && stats.calendarMonthAvgList.length > 0 && (
+                  {/* Strategy by calendar month — only when "All time" is selected */}
+                  {statsPeriod === 'total' && stats?.calendarMonthAvgList && stats.calendarMonthAvgList.length > 0 && (
                     <div className="card overflow-hidden">
                       <div className="card-header px-5 sm:px-6 py-3.5">
                         <p className="text-base font-semibold text-stone-800">Strategy by calendar month</p>
                         <p className="text-base text-stone-500 mt-1">Full years only, worst to best. Excludes {new Date().getFullYear()}.</p>
                       </div>
-                      <ul className="divide-y divide-stone-100 max-h-60 overflow-y-auto">
+                      <ul className="divide-y divide-stone-100">
                         {stats.calendarMonthAvgList.map((row) => (
                           <li
                             key={row.name}
@@ -1318,12 +1350,12 @@ export default function App() {
                             <span
                               className={cn(
                                 'text-base font-semibold tabular-nums',
-                                row.avgPnl > 0 && 'text-emerald-600',
-                                row.avgPnl < 0 && 'text-rose-600',
-                                row.avgPnl === 0 && 'text-stone-400'
+                                row.avgPct != null && row.avgPct > 0 && 'text-emerald-600',
+                                row.avgPct != null && row.avgPct < 0 && 'text-rose-600',
+                                (row.avgPct == null || row.avgPct === 0) && 'text-stone-400'
                               )}
                             >
-                              {row.avgPnl !== 0 ? `${row.avgPnl >= 0 ? '+' : ''}${row.formatted}` : row.formatted}
+                              {row.pctFormatted}
                             </span>
                           </li>
                         ))}
