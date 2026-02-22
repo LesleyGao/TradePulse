@@ -154,6 +154,7 @@ export default function App() {
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
   const [maxLossesPerDay, setMaxLossesPerDay] = useState(2); // user's rule: stop after this many losses in a day
   const [monthSort, setMonthSort] = useState<'best' | 'worst' | 'date'>('best');
+  const [calendarMonthSort, setCalendarMonthSort] = useState<'best' | 'worst' | 'date'>('worst');
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -546,18 +547,18 @@ export default function App() {
       arr.push(m.pct);
     }
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const calendarMonthAvgList: { name: string; avgPct: number | null; pctFormatted: string }[] = [];
+    const calendarMonthAvgList: { monthNum: number; name: string; avgPct: number | null; pctFormatted: string }[] = [];
     for (let monthNum = 1; monthNum <= 12; monthNum++) {
       const pcts = byCalendarMonthPcts.get(monthNum) ?? [];
       const avgPct = pcts.length > 0 ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
       const name = monthNames[monthNum - 1] ?? '';
       calendarMonthAvgList.push({
+        monthNum,
         name,
         avgPct,
         pctFormatted: avgPct != null ? (avgPct >= 0 ? '+' : '') + avgPct.toFixed(1) + '%' : '—',
       });
     }
-    calendarMonthAvgList.sort((a, b) => (a.avgPct ?? Infinity) - (b.avgPct ?? Infinity));
 
     return {
       totalPnl: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalPnl),
@@ -1336,17 +1337,48 @@ export default function App() {
                   {/* Strategy by calendar month — only when "All time" is selected */}
                   {statsPeriod === 'total' && stats?.calendarMonthAvgList && stats.calendarMonthAvgList.length > 0 && (
                     <div className="card overflow-hidden">
-                      <div className="card-header px-5 sm:px-6 py-3.5">
-                        <p className="text-base font-semibold text-stone-800">Strategy by calendar month</p>
-                        <p className="text-base text-stone-500 mt-1">Full years only, worst to best. Excludes {new Date().getFullYear()}.</p>
+                      <div className="card-header px-5 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-stone-800">Strategy by calendar month</p>
+                          <p className="text-base text-stone-500 mt-1">Full years only. Excludes {new Date().getFullYear()}.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-stone-500">Sort</span>
+                          <select
+                            value={calendarMonthSort}
+                            onChange={(e) => setCalendarMonthSort(e.target.value as 'best' | 'worst' | 'date')}
+                            className="text-sm font-medium text-stone-800 bg-white border border-stone-200 rounded-xl py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-2 cursor-pointer"
+                            aria-label="Sort calendar months by"
+                          >
+                            <option value="worst">Worst first</option>
+                            <option value="best">Best first</option>
+                            <option value="date">Date (Jan–Dec)</option>
+                          </select>
+                        </div>
                       </div>
                       <ul className="divide-y divide-stone-100">
-                        {stats.calendarMonthAvgList.map((row) => (
+                        {[...stats.calendarMonthAvgList]
+                          .sort((a, b) => {
+                            if (calendarMonthSort === 'best') return (b.avgPct ?? -Infinity) - (a.avgPct ?? -Infinity);
+                            if (calendarMonthSort === 'worst') return (a.avgPct ?? Infinity) - (b.avgPct ?? Infinity);
+                            return a.monthNum - b.monthNum;
+                          })
+                          .map((row) => {
+                            const isCurrentMonth = row.monthNum === new Date().getMonth() + 1;
+                            return (
                           <li
                             key={row.name}
-                            className="flex items-center justify-between px-5 sm:px-6 py-3 hover:bg-stone-50/80 transition-colors"
+                            className={cn(
+                              'flex items-center justify-between px-5 sm:px-6 py-3 transition-colors',
+                              isCurrentMonth ? 'bg-amber-50/80 hover:bg-amber-50' : 'hover:bg-stone-50/80'
+                            )}
                           >
-                            <span className="text-base font-medium text-stone-800">{row.name}</span>
+                            <span className="flex items-center gap-2">
+                              <span className="text-base font-medium text-stone-800">{row.name}</span>
+                              {isCurrentMonth && (
+                                <span className="text-xs font-medium text-amber-700 bg-amber-200/70 px-2 py-0.5 rounded-md">Current month</span>
+                              )}
+                            </span>
                             <span
                               className={cn(
                                 'text-base font-semibold tabular-nums',
@@ -1358,7 +1390,8 @@ export default function App() {
                               {row.pctFormatted}
                             </span>
                           </li>
-                        ))}
+                            );
+                          })}
                       </ul>
                     </div>
                   )}
