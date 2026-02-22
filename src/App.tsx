@@ -212,7 +212,7 @@ export default function App() {
     });
   }, [pnlData, chartPeriod, statsPeriod]);
 
-  const TRADES_PAGE_SIZE = 20;
+  const TRADES_PAGE_SIZE = 15;
   const OPTION_MULTIPLIER = 100; // 1 contract = 100 shares
   /** OCC-only: same symbol same day = 1 trade. Group by date+symbol. Used for Recent trades, stats, and PnL. */
   const groupedTradesForActivity = useMemo(() => {
