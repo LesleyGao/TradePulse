@@ -409,6 +409,22 @@ export default function App() {
 
     // Expectancy metric: expected $ per $1 risked = expectancy / |avgLoss| (only when there are losses)
     const absAvgLoss = losingTrades.length > 0 ? Math.abs(avgLoss) : 0;
+    // Avg % win and avg % loss per trade: use return % (PnL / cost from fills), then average
+    const returnPctFromFills = (grouped: { date: Date; symbol: string; type: 'BUY' | 'SELL'; quantity: number; price: number; pnl: number }) => {
+      const dayKey = format(grouped.date, 'yyyy-MM-dd');
+      const fills = tradesForStats.filter((f) => format(f.date, 'yyyy-MM-dd') === dayKey && f.symbol === grouped.symbol);
+      const costFromFills = fills.length > 0
+        ? fills.filter((f) => f.type === grouped.type).reduce((sum, f) => sum + f.quantity * f.price * OPTION_MULTIPLIER, 0)
+        : 0;
+      const cost = costFromFills > 0 ? costFromFills : grouped.quantity * grouped.price * OPTION_MULTIPLIER;
+      return cost > 0 ? (grouped.pnl / cost) * 100 : null;
+    };
+    const winningPcts = winningTrades.map(returnPctFromFills).filter((p): p is number => p != null);
+    const losingPcts = losingTrades.map(returnPctFromFills).filter((p): p is number => p != null);
+    const avgWinPct = winningPcts.length > 0 ? winningPcts.reduce((a, b) => a + b, 0) / winningPcts.length : null;
+    const avgLossPct = losingPcts.length > 0 ? losingPcts.reduce((a, b) => a + b, 0) / losingPcts.length : null;
+    const avgWinPctFormatted = avgWinPct != null ? `+${avgWinPct.toFixed(1)}%` : '—';
+    const avgLossPctFormatted = avgLossPct != null ? `${avgLossPct.toFixed(1)}%` : '—';
     const expectancyMetric =
       expectancy != null && absAvgLoss > 0 ? expectancy / absAvgLoss : null;
     const expectancyMetricFormatted =
@@ -513,6 +529,8 @@ export default function App() {
       rolling5Trend: rolling5DayPnl >= 0 ? 'up' : 'down',
       avgWin: avgWinFormatted,
       avgLoss: avgLossFormatted,
+      avgWinPctFormatted,
+      avgLossPctFormatted,
       breakevenWinRate: breakevenWinRateFormatted,
       aboveBreakeven,
       expectancyFormatted,
@@ -531,7 +549,7 @@ export default function App() {
       monthsList,
       calendarMonthAvgList,
     };
-  }, [pnlData, pnlDataForStats, groupedTradesForStats, maxLossesPerDay]);
+  }, [pnlData, pnlDataForStats, groupedTradesForStats, tradesForStats, maxLossesPerDay]);
 
   useEffect(() => {
     if (statsPeriod === 'total') return; /* user chose All time — don't override */
@@ -1009,6 +1027,14 @@ export default function App() {
                         <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Avg loss</p>
                         <p className="text-lg font-bold tabular-nums text-rose-600 mt-1">{stats?.avgLoss ?? '—'}</p>
                       </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Avg win %</p>
+                        <p className="text-lg font-bold tabular-nums text-emerald-600 mt-1">{stats?.avgWinPctFormatted ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-stone-600 uppercase tracking-wider">Avg loss %</p>
+                        <p className="text-lg font-bold tabular-nums text-rose-600 mt-1">{stats?.avgLossPctFormatted ?? '—'}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1338,9 +1364,9 @@ export default function App() {
                           <th className="text-left py-3 pl-5 pr-2 sm:pl-6 sm:pr-3 text-sm font-semibold text-stone-600 uppercase tracking-wider w-0" aria-label="Expand" />
                           <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-[7rem] sm:w-36">Date</th>
                           <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Underlying</th>
-                          <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-22 sm:w-28">Expiry</th>
                           <th className="text-left py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-14 sm:w-16">Type</th>
                           <th className="text-right py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-18 sm:w-22">Strike</th>
+                          <th className="text-right py-3 px-4 sm:px-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Return %</th>
                           <th className="text-right py-3 pr-5 pl-4 sm:pr-6 sm:pl-5 text-sm font-semibold text-stone-600 uppercase tracking-wider w-24 sm:w-28">PnL</th>
                         </tr>
                       </thead>
@@ -1379,7 +1405,6 @@ export default function App() {
                                   {format(trade.date, 'MMM d, yyyy')}
                                 </td>
                                 <td className="py-3 px-4 sm:px-5 text-base font-semibold text-stone-900">{occ?.underlying ?? '—'}</td>
-                                <td className="py-3 px-4 sm:px-5 text-base text-stone-600 tabular-nums whitespace-nowrap">{occ ? format(new Date(occ.expiration), 'MMM d, yyyy') : '—'}</td>
                                 <td className="py-3 px-4 sm:px-5">
                                   {occ ? (
                                     <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-semibold', occ.optionType === 'Call' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')}>
@@ -1388,6 +1413,30 @@ export default function App() {
                                   ) : '—'}
                                 </td>
                                 <td className="py-3 px-4 sm:px-5 text-right text-base tabular-nums text-stone-700 font-medium">{occ != null ? `$${occ.strike.toFixed(2)}` : '—'}</td>
+                                <td className="py-3 px-4 sm:px-5 text-right">
+                                  {(() => {
+                                    const costFromFills = underlyingFills.length > 0
+                                      ? underlyingFills
+                                          .filter((f) => f.type === trade.type)
+                                          .reduce((sum, f) => sum + f.quantity * f.price * OPTION_MULTIPLIER, 0)
+                                      : 0;
+                                    const cost = costFromFills > 0 ? costFromFills : trade.quantity * trade.price * OPTION_MULTIPLIER;
+                                    const pct = cost > 0 ? (trade.pnl / cost) * 100 : null;
+                                    if (pct == null) return <span className="text-base tabular-nums text-stone-400">—</span>;
+                                    return (
+                                      <span
+                                        className={cn(
+                                          'text-base font-semibold tabular-nums',
+                                          trade.pnl > 0 && 'text-emerald-600',
+                                          trade.pnl < 0 && 'text-rose-600',
+                                          trade.pnl === 0 && 'text-stone-400'
+                                        )}
+                                      >
+                                        {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
                                 <td className="py-3 pr-5 pl-4 sm:pr-6 sm:pl-5 text-right">
                                   <span
                                     className={cn(
