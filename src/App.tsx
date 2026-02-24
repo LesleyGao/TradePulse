@@ -25,7 +25,6 @@ export default function App() {
   const [hasRestoredSaved, setHasRestoredSaved] = useState(false);
   const [showSma, setShowSma] = useState(true);
   const [chartPeriod, setChartPeriod] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [tradesPage, setTradesPage] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
   const [maxLossesPerDay, setMaxLossesPerDay] = useState(2);
@@ -43,13 +42,7 @@ export default function App() {
     pnlDataForStats
   } = useTradeStats(trades, statsPeriod, maxLossesPerDay);
 
-  const TRADES_PAGE_SIZE = 15;
-  const tradesTotalPages = Math.max(1, Math.ceil(groupedTradesForStats.length / TRADES_PAGE_SIZE));
-  const currentTradesPage = Math.min(tradesPage, tradesTotalPages);
-  const displayedTrades = groupedTradesForStats.slice(
-    (currentTradesPage - 1) * TRADES_PAGE_SIZE,
-    currentTradesPage * TRADES_PAGE_SIZE
-  );
+  const displayedTrades = groupedTradesForStats.slice(0, 10);
 
   /** Restore saved CSV from localStorage on mount (once). */
   useEffect(() => {
@@ -109,9 +102,6 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    setTradesPage(1);
-  }, [groupedTradesForStats.length]);
 
   const clearData = () => {
     if (window.confirm('Clear all uploaded data? This cannot be undone.')) {
@@ -250,10 +240,6 @@ export default function App() {
               <TradeTable
                 displayedTrades={displayedTrades}
                 groupedTradesForStats={groupedTradesForStats}
-                currentTradesPage={currentTradesPage}
-                tradesTotalPages={tradesTotalPages}
-                setTradesPage={setTradesPage}
-                pageSize={TRADES_PAGE_SIZE}
                 onRowClick={handleRowClick}
                 expandedTradeKey={expandedTradeKey}
                 tradesForStats={tradesForStats}
