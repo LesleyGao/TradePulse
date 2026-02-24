@@ -222,8 +222,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             pnl: data.pnl,
             pct: data.cost > 0 ? (data.pnl / data.cost) * 100 : null
         }));
-        const top5WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 5);
-        const top5BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 5);
+        const top6WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 6);
+        const top6BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 6);
 
         // Consecutive streaks
         const sorted = [...groupedTradesForStats].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -270,6 +270,10 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
         } else if (callCount > 0) winningType = 'Call';
         else if (putCount > 0) winningType = 'Put';
 
+        const absAvgWin = Math.abs(avgWin);
+        const absAvgLoss = Math.abs(avgLoss);
+        const breakEvenWinRate = (absAvgWin > 0 && absAvgLoss > 0) ? (absAvgLoss / (absAvgWin + absAvgLoss)) * 100 : null;
+
         return {
             totalPnl: currencyFmt.format(totalPnl),
             trend: totalPnl >= 0 ? 'up' as const : 'down' as const,
@@ -278,6 +282,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             tradeCount: totalTrades,
             winRate: `${winRate.toFixed(1)}%`,
             winRateNum: winRate,
+            breakEvenWinRate,
+            breakEvenWinRateFormatted: breakEvenWinRate != null ? `${breakEvenWinRate.toFixed(1)}%` : '—',
             expectancy,
             expectancyFormatted: expectancy != null ? currencyFmt.format(expectancy) : '—',
             sqn,
@@ -292,8 +298,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             ruleDaysBroke,
             monthsList,
             calendarMonthAvgList,
-            top5WorstByUnderlying,
-            top5BestByUnderlying,
+            top6WorstByUnderlying,
+            top6BestByUnderlying,
             currentLossStreak,
             maxConsecutiveLossesObserved,
             consecutiveLossProbs,

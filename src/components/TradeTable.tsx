@@ -142,39 +142,88 @@ export const TradeTable = ({
                                         {isExpanded && (
                                             <tr className="bg-stone-50/80">
                                                 <td colSpan={6} className="px-8 py-0">
-                                                    <div className="py-6 space-y-4 border-l-2 border-stone-200 pl-6 ml-2 my-2">
-                                                        <div className="flex gap-10">
-                                                            <div>
-                                                                <div className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Position Specs</div>
-                                                                <div className="text-xs font-bold text-stone-700">
-                                                                    {occ ? `${occ.optionType} · Strike $${occ.strike} · Exp ${occ.expiration}` : 'Manual Fill'}
+                                                    <div className="py-10 space-y-8 border-l-4 border-stone-200 pl-10 ml-2 my-4">
+                                                        {/* Top Specs Grid */}
+                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-12">
+                                                            <div className="space-y-2">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Position Specs</div>
+                                                                <div className="text-base font-black text-stone-900 flex items-center gap-3">
+                                                                    {occ ? (
+                                                                        <>
+                                                                            <span className="px-2 py-0.5 rounded-lg bg-stone-900 text-white text-[10px] tracking-widest">{occ.optionType}</span>
+                                                                            <span>${occ.strike} Strike</span>
+                                                                            <span className="text-stone-300">·</span>
+                                                                            <span className="text-stone-500">{format(new Date(occ.expiration + 'T00:00:00'), 'MMM d')}</span>
+                                                                        </>
+                                                                    ) : 'Manual Trade'}
                                                                 </div>
                                                             </div>
-                                                            <div>
-                                                                <div className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Average Price</div>
-                                                                <div className="text-xs font-bold text-stone-700">${trade.price.toFixed(2)}</div>
+                                                            <div className="space-y-2">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Avg Cost Basis</div>
+                                                                <div className="text-lg font-black text-stone-900">${trade.price.toFixed(2)}</div>
                                                             </div>
-                                                            <div>
-                                                                <div className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Contracts</div>
-                                                                <div className="text-xs font-bold text-stone-700">{trade.quantity}</div>
+                                                            <div className="space-y-2">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Total Size</div>
+                                                                <div className="text-lg font-black text-stone-900">{trade.quantity} <span className="text-[11px] text-stone-400 ml-1 font-black uppercase tracking-widest">Contracts</span></div>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Net Profit</div>
+                                                                <div className={cn(
+                                                                    "text-lg font-black tabular-nums",
+                                                                    trade.pnl >= 0 ? "text-emerald-600" : "text-rose-600"
+                                                                )}>
+                                                                    {trade.pnl >= 0 ? '+' : '−'}${Math.abs(trade.pnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                </div>
                                                             </div>
                                                         </div>
 
-                                                        <div className="space-y-2">
-                                                            <div className="text-[10px] font-black uppercase tracking-widest text-stone-400">Fill Details</div>
-                                                            <div className="bg-white rounded-xl border border-stone-200/50 p-3 space-y-1 shadow-sm">
-                                                                {fills.map((f, idx) => (
-                                                                    <div key={idx} className="flex justify-between items-center text-[11px]">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className={cn(
-                                                                                "font-black tracking-tighter",
-                                                                                f.type === 'BUY' ? "text-emerald-600" : "text-stone-400"
-                                                                            )}>{f.type}</span>
-                                                                            <span className="font-bold text-stone-800">{f.quantity} × ${f.price.toFixed(2)}</span>
-                                                                        </div>
-                                                                        <span className="text-stone-400 font-medium">{format(f.date, 'hh:mm:ss a')}</span>
-                                                                    </div>
-                                                                ))}
+                                                        {/* Fill History */}
+                                                        <div className="space-y-4">
+                                                            <div className="flex items-center justify-between pr-8">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Transaction Fill History</div>
+                                                                <div className="px-3 py-1 rounded-full bg-stone-100 text-[10px] font-black text-stone-500 uppercase tracking-widest">{fills.length} Fills</div>
+                                                            </div>
+                                                            <div className="bg-white rounded-3xl border border-stone-200/80 overflow-hidden shadow-xl shadow-stone-200/20">
+                                                                <div className="divide-y divide-stone-50">
+                                                                    {fills.map((f, idx) => {
+                                                                        const fillReturn = f.type === 'SELL' && trade.price > 0
+                                                                            ? ((f.price - trade.price) / trade.price) * 100
+                                                                            : null;
+
+                                                                        return (
+                                                                            <div key={idx} className="flex justify-between items-center p-6 hover:bg-stone-50/50 transition-all duration-300">
+                                                                                <div className="flex items-center gap-10">
+                                                                                    <div className={cn(
+                                                                                        "w-16 py-1.5 rounded-xl text-center text-[10px] font-black uppercase tracking-[0.1em]",
+                                                                                        f.type === 'BUY' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-stone-100 text-stone-600 border border-stone-200"
+                                                                                    )}>
+                                                                                        {f.type}
+                                                                                    </div>
+                                                                                    <div className="flex items-baseline gap-3">
+                                                                                        <span className="text-base font-black text-stone-900">{f.quantity}</span>
+                                                                                        <span className="text-xs text-stone-400 font-black uppercase tracking-widest">at</span>
+                                                                                        <span className="text-base font-black text-stone-900">${f.price.toFixed(2)}</span>
+                                                                                    </div>
+                                                                                    {fillReturn !== null && (
+                                                                                        <div className={cn(
+                                                                                            "flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider shadow-md",
+                                                                                            fillReturn >= 0 ? "bg-emerald-600 text-white shadow-emerald-200" : "bg-rose-600 text-white shadow-rose-200"
+                                                                                        )}>
+                                                                                            <span className="tabular-nums">{fillReturn >= 0 ? '+' : ''}{fillReturn.toFixed(1)}%</span>
+                                                                                            <span className="text-[9px] border-l border-white/30 pl-2 font-black tracking-widest">
+                                                                                                {fillReturn >= 0 ? 'GAIN' : 'LOSS'}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="text-right">
+                                                                                    <div className="text-xs font-black text-stone-900 tracking-tight">{format(f.date, 'hh:mm:ss a')}</div>
+                                                                                    <div className="text-[9px] font-black text-stone-400 uppercase tracking-widest mt-0.5">{format(f.date, 'MMM d')}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>

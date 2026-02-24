@@ -4,11 +4,11 @@ import { cn } from '../utils/cn';
 
 interface InsightsSectionProps {
     stats: any;
-    top5Worst: any[];
-    top5Best: any[];
+    topWorstSymbols: any[];
+    topBestSymbols: any[];
 }
 
-export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionProps) => {
+export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: InsightsSectionProps) => {
     const [toggle, setToggle] = useState<'worst' | 'best'>('worst');
 
     if (!stats) return null;
@@ -36,6 +36,17 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
             value: `${stats.avgWin} vs ${stats.avgLoss}`,
             condition: true,
             text: () => `Your average win is ${stats.avgWin} while average loss is ${stats.avgLoss}.`
+        },
+        {
+            label: 'Required Win Rate',
+            value: stats.breakEvenWinRateFormatted,
+            condition: stats.breakEvenWinRate != null,
+            text: () => {
+                const diff = stats.winRateNum - stats.breakEvenWinRate;
+                if (diff > 5) return `Winning! Your ${stats.winRate} win rate is well above the ${stats.breakEvenWinRateFormatted} needed to break even.`;
+                if (diff > 0) return `Profitable. You are currently exceeding the ${stats.breakEvenWinRateFormatted} win rate required for your R/R.`;
+                return `Attention. With your current R/R, you need a ${stats.breakEvenWinRateFormatted} win rate to be profitable.`;
+            }
         }
     ];
 
@@ -90,7 +101,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                 toggle === 'worst' ? "bg-white text-stone-900 shadow-sm shadow-stone-200/50" : "text-stone-500 hover:text-stone-800"
                             )}
                         >
-                            Worst 5
+                            Worst
                         </button>
                         <button
                             onClick={() => setToggle('best')}
@@ -99,14 +110,14 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                 toggle === 'best' ? "bg-white text-stone-900 shadow-sm shadow-stone-200/50" : "text-stone-500 hover:text-stone-800"
                             )}
                         >
-                            Best 5
+                            Best
                         </button>
                     </div>
                 </div>
 
                 <div className="card overflow-hidden shadow-xl shadow-stone-200/40 flex-1 bg-white">
                     <div className="h-full flex flex-col">
-                        <table className="w-full flex-1">
+                        <table className="w-full flex-1 border-collapse">
                             <thead>
                                 <tr className="text-left border-b border-stone-50">
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-stone-400">Rank</th>
@@ -115,11 +126,11 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-50">
-                                {(toggle === 'worst' ? top5Worst : top5Best).map((item, i) => (
+                                {(toggle === 'worst' ? topWorstSymbols : topBestSymbols).map((item, i) => (
                                     <tr key={item.name} className="group hover:bg-stone-50/50 transition-colors">
                                         <td className="px-5 py-4">
                                             <span className="w-7 h-7 rounded-lg bg-stone-50 flex items-center justify-center text-[10px] font-black text-stone-400 group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
-                                                0{i + 1}
+                                                {i < 9 ? `0${i + 1}` : i + 1}
                                             </span>
                                         </td>
                                         <td className="px-5 py-4">
@@ -133,7 +144,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                         </td>
                                     </tr>
                                 ))}
-                                {(toggle === 'worst' ? top5Worst : top5Best).length === 0 && (
+                                {(toggle === 'worst' ? topWorstSymbols : topBestSymbols).length === 0 && (
                                     <tr>
                                         <td colSpan={3} className="px-5 py-16 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-30">

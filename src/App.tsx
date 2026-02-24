@@ -222,8 +222,8 @@ export default function App() {
 
               <InsightsSection
                 stats={stats}
-                top5Worst={stats?.top5WorstByUnderlying ?? []}
-                top5Best={stats?.top5BestByUnderlying ?? []}
+                topWorstSymbols={stats?.top6WorstByUnderlying ?? []}
+                topBestSymbols={stats?.top6BestByUnderlying ?? []}
               />
 
               <BreakdownSection
