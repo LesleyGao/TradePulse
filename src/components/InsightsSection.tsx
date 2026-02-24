@@ -131,10 +131,10 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols, minTra
                         <table className="w-full flex-1 border-collapse">
                             <thead>
                                 <tr className="text-left border-b border-stone-50">
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-stone-400">Rank</th>
-                                    <th className="px-5 py-4 text-left text-[10px] font-black uppercase tracking-widest text-stone-400">Underlying</th>
-                                    <th className="px-5 py-4 text-center text-[10px] font-black uppercase tracking-widest text-stone-400">Trades</th>
-                                    <th className="px-5 py-4 text-right text-[10px] font-black uppercase tracking-widest text-stone-400">PnL Pct</th>
+                                    <th className="w-1/4 px-5 py-4 text-left text-[10px] font-black uppercase tracking-widest text-stone-400">Rank</th>
+                                    <th className="w-1/4 px-5 py-4 text-left text-[10px] font-black uppercase tracking-widest text-stone-400">Underlying</th>
+                                    <th className="w-1/4 px-5 py-4 text-center text-[10px] font-black uppercase tracking-widest text-stone-400">Trades</th>
+                                    <th className="w-1/4 px-5 py-4 text-right text-[10px] font-black uppercase tracking-widest text-stone-400">PnL Pct</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-50">
