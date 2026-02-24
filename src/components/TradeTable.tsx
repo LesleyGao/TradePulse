@@ -68,12 +68,12 @@ export const TradeTable = ({
                     <table className="w-full">
                         <thead>
                             <tr className="bg-stone-50/80 border-b border-stone-100">
-                                <th className="w-12 px-6 py-4"></th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Date</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Underlying</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Type</th>
-                                <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Return %</th>
-                                <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-stone-400 pr-8">P&L</th>
+                                <th className="w-16 px-8 py-5"></th>
+                                <th className="px-8 py-5 text-left text-[11px] font-black uppercase tracking-[0.25em] text-stone-400">Date Transacted</th>
+                                <th className="px-8 py-5 text-left text-[11px] font-black uppercase tracking-[0.25em] text-stone-400">Underlying</th>
+                                <th className="px-8 py-5 text-left text-[11px] font-black uppercase tracking-[0.25em] text-stone-400">Outcome</th>
+                                <th className="px-8 py-5 text-right text-[11px] font-black uppercase tracking-[0.25em] text-stone-400">Return %</th>
+                                <th className="px-8 py-5 text-right text-[11px] font-black uppercase tracking-[0.25em] text-stone-400 pr-10">PnL</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100 bg-white">
@@ -95,46 +95,49 @@ export const TradeTable = ({
                                             onClick={() => onRowClick(key)}
                                             className={cn(
                                                 "group cursor-pointer transition-all duration-300",
-                                                isExpanded ? "bg-stone-50/50" : "hover:bg-stone-50/50"
+                                                isExpanded ? "bg-stone-50/50" : "hover:bg-stone-50/80"
                                             )}
                                         >
-                                            <td className="px-6 py-4">
+                                            <td className="px-8 py-6">
                                                 <div className={cn(
-                                                    "w-6 h-6 rounded-lg flex items-center justify-center transition-all",
-                                                    isExpanded ? "bg-stone-900 text-white shadow-md shadow-stone-200" : "bg-stone-100 text-stone-400"
+                                                    "w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300",
+                                                    isExpanded ? "bg-stone-900 text-white shadow-lg shadow-stone-200" : "bg-stone-100 text-stone-400 group-hover:bg-stone-200 group-hover:text-stone-600"
                                                 )}>
-                                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5 group-hover:scale-125" />}
+                                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm font-bold text-stone-900">{format(trade.date, 'MMM d, yyyy')}</div>
-                                                <div className="text-[10px] font-black text-stone-400 uppercase tracking-widest mt-0.5">{format(trade.date, 'hh:mm a')}</div>
+                                            <td className="px-8 py-6">
+                                                <div className="text-base font-black text-stone-900">{format(trade.date, 'MMM d, yyyy')}</div>
+                                                <div className="text-xs font-black text-stone-400 uppercase tracking-widest mt-1">{format(trade.date, 'hh:mm a')}</div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm font-black text-stone-900">{underlying}</div>
+                                            <td className="px-8 py-6">
+                                                <div className="text-base font-black text-stone-900 tracking-tight">{underlying}</div>
+                                                <div className="text-[10px] font-black text-stone-400 uppercase tracking-[0.1em] mt-1">{trade.quantity} Contracts</div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-8 py-6">
                                                 <span className={cn(
-                                                    "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest",
-                                                    trade.pnl >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                                                    "inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-[0.1em] border shadow-sm",
+                                                    trade.pnl >= 0
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                        : "bg-rose-50 text-rose-700 border-rose-100"
                                                 )}>
                                                     {trade.pnl >= 0 ? 'Winning' : 'Losing'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-8 py-6 text-right">
                                                 <div className={cn(
-                                                    "text-sm font-black tabular-nums",
+                                                    "text-base font-black tabular-nums tracking-tighter",
                                                     returnPct != null && returnPct > 0 ? "text-emerald-600" : returnPct != null && returnPct < 0 ? "text-rose-600" : "text-stone-400"
                                                 )}>
                                                     {returnPct != null ? `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(1)}%` : '—'}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-right pr-8">
+                                            <td className="px-8 py-6 text-right pr-10">
                                                 <div className={cn(
-                                                    "text-sm font-black tabular-nums",
+                                                    "text-base font-black tabular-nums tracking-tighter",
                                                     trade.pnl >= 0 ? "text-emerald-700" : "text-rose-700"
                                                 )}>
-                                                    {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    {trade.pnl >= 0 ? '+' : '−'}${Math.abs(trade.pnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                 </div>
                                             </td>
                                         </tr>
