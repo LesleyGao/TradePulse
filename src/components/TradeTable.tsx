@@ -6,6 +6,10 @@ import { cn } from '../utils/cn';
 interface TradeTableProps {
     displayedTrades: any[];
     groupedTradesForStats: any[];
+    currentTradesPage: number;
+    tradesTotalPages: number;
+    setTradesPage: (n: number | ((prev: number) => number)) => void;
+    pageSize: number;
     onRowClick: (key: string) => void;
     expandedTradeKey: string | null;
     tradesForStats: any[];
@@ -16,6 +20,10 @@ interface TradeTableProps {
 export const TradeTable = ({
     displayedTrades,
     groupedTradesForStats,
+    currentTradesPage,
+    tradesTotalPages,
+    setTradesPage,
+    pageSize,
     onRowClick,
     expandedTradeKey,
     tradesForStats,
@@ -29,6 +37,30 @@ export const TradeTable = ({
                     <h2 className="text-xl font-bold text-stone-900 tracking-tight">Recent Activity</h2>
                     <p className="text-sm text-stone-500 mt-1">Transaction history and individual trade fills.</p>
                 </div>
+
+                {tradesTotalPages > 1 && (
+                    <div className="flex items-center gap-4 bg-stone-100 p-1 rounded-xl border border-stone-200">
+                        <span className="text-xs font-black text-stone-500 px-3 tabular-nums uppercase tracking-widest">
+                            Pg {currentTradesPage} / {tradesTotalPages}
+                        </span>
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => setTradesPage(p => Math.max(1, p - 1))}
+                                disabled={currentTradesPage === 1}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setTradesPage(p => Math.min(tradesTotalPages, p + 1))}
+                                disabled={currentTradesPage === tradesTotalPages}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="card overflow-hidden shadow-2xl shadow-stone-200/40 border-stone-200/60">
