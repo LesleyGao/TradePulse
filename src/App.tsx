@@ -961,6 +961,9 @@ export default function App() {
                       </div>
                       {chartPeriod === 'daily' && (
                         <>
+                          {chartData.length < 21 && showSma && (
+                            <span className="text-xs text-amber-600/90">20d SMA needs 21+ days</span>
+                          )}
                           <span className="text-sm text-stone-500">20-day SMA</span>
                           <button
                             type="button"
@@ -1057,6 +1060,14 @@ export default function App() {
                                     <span className="text-stone-500 text-base">5-day rolling</span>
                                     <span className={cn('font-semibold tabular-nums text-base', point.rolling5DayPnl >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
                                       {point.rolling5DayPnl >= 0 ? '+' : ''}${point.rolling5DayPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                )}
+                                {chartPeriod === 'daily' && point.sma20 != null && (
+                                  <div className="flex justify-between gap-6">
+                                    <span className="text-stone-500 text-base">20-day SMA</span>
+                                    <span className="font-semibold tabular-nums text-base text-amber-600">
+                                      {point.sma20 >= 0 ? '+' : ''}${point.sma20.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                   </div>
                                 )}
@@ -1582,7 +1593,6 @@ export default function App() {
                           <th className="text-left py-3.5 px-4 sm:px-5 lg:px-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-[7rem] sm:w-36">Date</th>
                           <th className="text-left py-3.5 px-4 sm:px-5 lg:px-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Underlying</th>
                           <th className="text-left py-3.5 px-4 sm:px-5 lg:px-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-14 sm:w-16">Type</th>
-                          <th className="text-right py-3.5 px-4 sm:px-5 lg:px-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-18 sm:w-22">Strike</th>
                           <th className="text-right py-3.5 px-4 sm:px-5 lg:px-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-20 sm:w-24">Return %</th>
                           <th className="text-right py-3.5 pr-5 pl-4 sm:pr-6 sm:pl-5 lg:pr-8 lg:pl-6 text-sm font-semibold text-stone-600 uppercase tracking-wider w-24 sm:w-28">PnL</th>
                         </tr>
@@ -1629,7 +1639,6 @@ export default function App() {
                                     </span>
                                   ) : '—'}
                                 </td>
-                                <td className="py-3.5 px-4 sm:px-5 lg:px-6 text-right text-base tabular-nums text-stone-700 font-medium">{occ != null ? `$${occ.strike.toFixed(2)}` : '—'}</td>
                                 <td className="py-3.5 px-4 sm:px-5 lg:px-6 text-right">
                                   {(() => {
                                     const costFromFills = underlyingFills.length > 0
