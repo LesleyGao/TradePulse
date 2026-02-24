@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, startTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
 
 // Hooks & Utils
 import { useTradeStats, parseOccSymbol, OPTION_MULTIPLIER_VAL } from './hooks/useTradeStats';
@@ -14,10 +15,17 @@ import { InsightsSection } from './components/InsightsSection';
 import { BreakdownSection } from './components/BreakdownSection';
 import { TradeTable } from './components/TradeTable';
 import { EmptyState } from './components/EmptyState';
+import { TradeEntryForm } from './components/TradeEntryForm';
 import PositionSizeCalculator from './pages/PositionSizeCalculator';
 
 type Page = 'dashboard' | 'calculator';
 const SAVED_CSV_KEY = 'tradepulse_csv';
+const SAVED_TRADES_KEY = 'tradepulse_trades_json';
+
+const getTradeKey = (t: Trade) => {
+  const time = t.date instanceof Date ? t.date.getTime() : new Date(t.date).getTime();
+  return `${time}_${t.symbol}_${t.type}_${t.quantity}_${t.price}`;
+};
 
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
@@ -33,6 +41,7 @@ export default function App() {
   const [calendarMonthSort, setCalendarMonthSort] = useState<'best' | 'worst' | 'date'>('worst');
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
+  const [isAddingTrade, setIsAddingTrade] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -51,25 +60,43 @@ export default function App() {
     currentTradesPage * TRADES_PAGE_SIZE
   );
 
-  /** Restore saved CSV from localStorage on mount (once). */
+  /** Restore saved trades from localStorage on mount. */
   useEffect(() => {
     if (hasRestoredSaved) return;
     setHasRestoredSaved(true);
     try {
-      const saved = localStorage.getItem(SAVED_CSV_KEY);
-      if (saved) {
-        const parsed = parseBrokerCsv(saved);
+      // Priority 1: JSON storage
+      const savedJson = localStorage.getItem(SAVED_TRADES_KEY);
+      if (savedJson) {
+        const parsed = JSON.parse(savedJson).map((t: any) => ({ ...t, date: new Date(t.date) }));
+        if (parsed.length > 0) {
+          setTrades(parsed);
+          return;
+        }
+      }
+
+      // Priority 2: Legacy CSV storage
+      const savedCsv = localStorage.getItem(SAVED_CSV_KEY);
+      if (savedCsv) {
+        const parsed = parseBrokerCsv(savedCsv);
         if (parsed.length > 0) setTrades(parsed);
       }
-    } catch {
-      // ignore invalid or missing saved data
+    } catch (e) {
+      console.error('Migration failed', e);
     }
   }, [hasRestoredSaved]);
+
+  const saveTrades = useCallback((newTrades: Trade[]) => {
+    setTrades(newTrades);
+    try {
+      localStorage.setItem(SAVED_TRADES_KEY, JSON.stringify(newTrades));
+    } catch { }
+  }, []);
 
   const loadSampleData = () => {
     setError(null);
     const parsed = parseBrokerCsv(SAMPLE_CSV);
-    setTrades(parsed);
+    saveTrades(parsed);
   };
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
@@ -95,12 +122,23 @@ export default function App() {
         return;
       }
 
-      setTrades(parsed);
-      try {
-        localStorage.setItem(SAVED_CSV_KEY, text);
-      } catch {
-        // ignore quota
-      }
+      // Merge avoiding duplicates
+      setTrades(prev => {
+        const existingKeys = new Set(prev.map(getTradeKey));
+        const newTrades = [...prev];
+        let addedCount = 0;
+        for (const t of parsed) {
+          if (!existingKeys.has(getTradeKey(t))) {
+            newTrades.push(t);
+            addedCount++;
+          }
+        }
+
+        const sorted = newTrades.sort((a, b) => a.date.getTime() - b.date.getTime());
+        localStorage.setItem(SAVED_TRADES_KEY, JSON.stringify(sorted));
+        return sorted;
+      });
+
       if ('files' in e.target && e.target instanceof HTMLInputElement) {
         e.target.value = '';
       }
@@ -118,9 +156,23 @@ export default function App() {
     if (window.confirm('Clear all uploaded data? This cannot be undone.')) {
       try {
         localStorage.removeItem(SAVED_CSV_KEY);
+        localStorage.removeItem(SAVED_TRADES_KEY);
       } catch { }
       setTrades([]);
     }
+  };
+
+  const handleAddTrade = (t: Trade) => {
+    const updated = [...trades, t].sort((a, b) => a.date.getTime() - b.date.getTime());
+    saveTrades(updated);
+  };
+
+  const handleDeleteTrades = (symbol: string, dateStr: string) => {
+    const updated = trades.filter(t => {
+      const tDay = format(t.date, 'yyyy-MM-dd');
+      return !(tDay === dateStr && t.symbol === symbol);
+    });
+    saveTrades(updated);
   };
 
   const handleRowClick = (key: string) => {
@@ -136,8 +188,17 @@ export default function App() {
       statsPeriod={statsPeriod}
       handlePeriodChange={(p) => startTransition(() => setStatsPeriod(p))}
       onUploadClick={() => fileInputRef.current?.click()}
+      onAddTradeClick={() => setIsAddingTrade(true)}
       onClearData={clearData}
     >
+      <AnimatePresence>
+        {isAddingTrade && (
+          <TradeEntryForm
+            onAddTrade={handleAddTrade}
+            onClose={() => setIsAddingTrade(false)}
+          />
+        )}
+      </AnimatePresence>
       <input
         ref={fileInputRef}
         type="file"
@@ -260,6 +321,7 @@ export default function App() {
                 tradesForStats={tradesForStats}
                 parseOccSymbol={parseOccSymbol}
                 OPTION_MULTIPLIER={OPTION_MULTIPLIER_VAL}
+                onDeleteTrades={handleDeleteTrades}
               />
             </div>
           </motion.div>

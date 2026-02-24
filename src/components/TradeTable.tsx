@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Trash2, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../utils/cn';
 
@@ -15,6 +15,7 @@ interface TradeTableProps {
     tradesForStats: any[];
     parseOccSymbol: (s: string) => any;
     OPTION_MULTIPLIER: number;
+    onDeleteTrades: (symbol: string, dateStr: string) => void;
 }
 
 export const TradeTable = ({
@@ -29,7 +30,24 @@ export const TradeTable = ({
     tradesForStats,
     parseOccSymbol,
     OPTION_MULTIPLIER,
+    onDeleteTrades,
 }: TradeTableProps) => {
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredGroupedTrades = groupedTradesForStats.filter(t => {
+        const occ = parseOccSymbol(t.symbol);
+        const underlying = (occ?.underlying ?? t.symbol).toUpperCase();
+        return underlying.includes(searchQuery.toUpperCase().trim());
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filteredGroupedTrades.length / pageSize));
+    const safeCurrentPage = Math.min(currentTradesPage, totalPages);
+
+    const displayedFilteredTrades = filteredGroupedTrades.slice(
+        (safeCurrentPage - 1) * pageSize,
+        safeCurrentPage * pageSize
+    );
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -38,29 +56,45 @@ export const TradeTable = ({
                     <p className="text-sm text-stone-500 mt-1">Transaction history and individual trade fills.</p>
                 </div>
 
-                {tradesTotalPages > 1 && (
-                    <div className="flex items-center gap-4 bg-stone-100 p-1 rounded-xl border border-stone-200">
-                        <span className="text-xs font-black text-stone-500 px-3 tabular-nums uppercase tracking-widest">
-                            Pg {currentTradesPage} / {tradesTotalPages}
-                        </span>
-                        <div className="flex gap-1">
-                            <button
-                                onClick={() => setTradesPage(p => Math.max(1, p - 1))}
-                                disabled={currentTradesPage === 1}
-                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
-                            >
-                                <ChevronLeft className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => setTradesPage(p => Math.min(tradesTotalPages, p + 1))}
-                                disabled={currentTradesPage === tradesTotalPages}
-                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
-                            >
-                                <ChevronRight className="w-4 h-4" />
-                            </button>
-                        </div>
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="relative group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 group-focus-within:text-stone-900 transition-colors" />
+                        <input
+                            type="text"
+                            placeholder="Search underlying..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setTradesPage(1);
+                            }}
+                            className="pl-11 pr-4 py-2.5 bg-stone-100 hover:bg-stone-200/50 border border-stone-200 rounded-xl text-xs font-bold text-stone-900 placeholder-stone-400 focus:ring-2 focus:ring-stone-900 focus:bg-white outline-none transition-all w-full sm:w-64"
+                        />
                     </div>
-                )}
+
+                    {totalPages > 1 && (
+                        <div className="flex items-center gap-4 bg-stone-100 p-1 rounded-xl border border-stone-200">
+                            <span className="text-xs font-black text-stone-500 px-3 tabular-nums uppercase tracking-widest">
+                                Pg {safeCurrentPage} / {totalPages}
+                            </span>
+                            <div className="flex gap-1">
+                                <button
+                                    onClick={() => setTradesPage(p => Math.max(1, p - 1))}
+                                    disabled={safeCurrentPage === 1}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setTradesPage(p => Math.min(totalPages, (p as number) + 1))}
+                                    disabled={safeCurrentPage === totalPages}
+                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white shadow-sm border border-stone-200 text-stone-600 disabled:opacity-30 disabled:shadow-none hover:bg-stone-50 transition-all"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="card overflow-hidden shadow-2xl shadow-stone-200/40 border-stone-200/60">
@@ -77,7 +111,7 @@ export const TradeTable = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100 bg-white">
-                            {displayedTrades.map((trade) => {
+                            {displayedFilteredTrades.map((trade) => {
                                 const key = `${format(trade.date, 'yyyy-MM-dd')}_${trade.symbol}`;
                                 const isExpanded = expandedTradeKey === key;
                                 const occ = parseOccSymbol(trade.symbol);
@@ -86,7 +120,9 @@ export const TradeTable = ({
                                 // Calculate Return % for the row
                                 const dayKey = format(trade.date, 'yyyy-MM-dd');
                                 const fills = tradesForStats.filter(f => format(f.date, 'yyyy-MM-dd') === dayKey && f.symbol === trade.symbol);
-                                const cost = fills.filter(f => f.type === trade.type).reduce((sum, f) => sum + (f.quantity * f.price * OPTION_MULTIPLIER), 0);
+                                const isOption = (sym: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(sym.trim());
+                                const multiplier = isOption(trade.symbol) ? OPTION_MULTIPLIER : 1;
+                                const cost = fills.filter(f => f.type === trade.type).reduce((sum, f) => sum + (f.quantity * f.price * multiplier), 0);
                                 const returnPct = cost > 0 ? (trade.pnl / cost) * 100 : null;
 
                                 return (
@@ -177,6 +213,20 @@ export const TradeTable = ({
                                                                 )}>
                                                                     {trade.pnl >= 0 ? '+' : '−'}${Math.abs(trade.pnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                 </div>
+                                                            </div>
+                                                            <div className="flex flex-col justify-center items-end">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (window.confirm(`Delete all ${fills.length} fills for ${underlying} on this date?`)) {
+                                                                            onDeleteTrades(trade.symbol, format(trade.date, 'yyyy-MM-dd'));
+                                                                        }
+                                                                    }}
+                                                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100 group"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest">Delete Trades</span>
+                                                                </button>
                                                             </div>
                                                         </div>
 

@@ -90,7 +90,7 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                 <div className="flex items-center justify-between h-[68px]">
                     <div className="min-w-0">
                         <h2 className="text-xl font-bold text-stone-900 tracking-tight">Top Performance</h2>
-                        <p className="text-sm text-stone-500 mt-1 truncate">Best and worst underlying assets.</p>
+                        <p className="text-xs text-stone-500 mt-1 font-medium italic underline decoration-stone-200 underline-offset-4">Only includes symbols traded more than once.</p>
                     </div>
 
                     <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/50 shrink-0 ml-4">
@@ -149,7 +149,7 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                                         <td colSpan={3} className="px-5 py-16 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-30">
                                                 <Target className="w-10 h-10 text-stone-400" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest">No Symbol Activity</span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-center px-4">No Recurring Trades<br />(Min. 2 Days Traded)</span>
                                             </div>
                                         </td>
                                     </tr>

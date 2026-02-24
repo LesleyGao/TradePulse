@@ -36,7 +36,7 @@ const OPTION_MULTIPLIER = 100;
 
 export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, maxLossesPerDay: number) => {
     const tradesForActivity = useMemo(
-        () => trades.filter((t) => isOccOptionSymbol(t.symbol)),
+        () => trades,
         [trades]
     );
 
@@ -55,9 +55,10 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             const existing = map.get(k);
             const qty = t.type === 'BUY' ? t.quantity : -t.quantity;
             const signedAmount = t.type === 'BUY' ? t.quantity * t.price : -(t.quantity * t.price);
+            const multiplier = isOccOptionSymbol(t.symbol) ? OPTION_MULTIPLIER : 1;
             const fillPnl = t.type === 'SELL'
-                ? t.quantity * t.price * OPTION_MULTIPLIER
-                : -(t.quantity * t.price * OPTION_MULTIPLIER);
+                ? t.quantity * t.price * multiplier
+                : -(t.quantity * t.price * multiplier);
             if (!existing) {
                 map.set(k, { date: t.date, symbol: t.symbol, volume: t.quantity, netQty: qty, amount: signedAmount, pnl: fillPnl });
             } else {
@@ -137,7 +138,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
         const getReturnPct = (g: any) => {
             const dayKey = format(g.date, 'yyyy-MM-dd');
             const fills = fillsByDaySymbol.get(`${dayKey}_${g.symbol}`) ?? [];
-            const cost = fills.filter((f) => f.type === g.type).reduce((sum, f) => sum + f.quantity * f.price * OPTION_MULTIPLIER, 0);
+            const multiplier = isOccOptionSymbol(g.symbol) ? OPTION_MULTIPLIER : 1;
+            const cost = fills.filter((f) => f.type === g.type).reduce((sum, f) => sum + f.quantity * f.price * multiplier, 0);
             return cost > 0 ? (g.pnl / cost) * 100 : null;
         };
 
@@ -176,7 +178,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
         }
         for (const t of groupedTradesForStats) {
             const key = format(t.date, 'yyyy-MM');
-            const cost = fillsByDaySymbol.get(`${format(t.date, 'yyyy-MM-dd')}_${t.symbol}`)?.filter(f => f.type === t.type).reduce((s, f) => s + f.quantity * f.price * OPTION_MULTIPLIER, 0) || (t.quantity * t.price * OPTION_MULTIPLIER);
+            const multiplier = isOccOptionSymbol(t.symbol) ? OPTION_MULTIPLIER : 1;
+            const cost = fillsByDaySymbol.get(`${format(t.date, 'yyyy-MM-dd')}_${t.symbol}`)?.filter(f => f.type === t.type).reduce((s, f) => s + f.quantity * f.price * multiplier, 0) || (t.quantity * t.price * multiplier);
             byMonthCost[key] = (byMonthCost[key] ?? 0) + cost;
         }
 
@@ -208,20 +211,25 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
         });
 
         // Top 5 symbols
-        const pnlByUnderlying: Record<string, { pnl: number, cost: number }> = {};
+        const pnlByUnderlying: Record<string, { pnl: number, cost: number, count: number }> = {};
         for (const t of groupedTradesForStats) {
             const occ = parseOccSymbol(t.symbol);
             const sym = occ?.underlying ?? t.symbol;
-            if (!pnlByUnderlying[sym]) pnlByUnderlying[sym] = { pnl: 0, cost: 0 };
+            if (!pnlByUnderlying[sym]) pnlByUnderlying[sym] = { pnl: 0, cost: 0, count: 0 };
             pnlByUnderlying[sym].pnl += t.pnl;
-            const cost = fillsByDaySymbol.get(`${format(t.date, 'yyyy-MM-dd')}_${t.symbol}`)?.filter(f => f.type === t.type).reduce((s, f) => s + f.quantity * f.price * OPTION_MULTIPLIER, 0) || (t.quantity * t.price * OPTION_MULTIPLIER);
+            pnlByUnderlying[sym].count += 1;
+            const multiplier = isOccOptionSymbol(t.symbol) ? OPTION_MULTIPLIER : 1;
+            const cost = fillsByDaySymbol.get(`${format(t.date, 'yyyy-MM-dd')}_${t.symbol}`)?.filter(f => f.type === t.type).reduce((s, f) => s + f.quantity * f.price * multiplier, 0) || (t.quantity * t.price * multiplier);
             pnlByUnderlying[sym].cost += cost;
         }
-        const symbolEntries = Object.entries(pnlByUnderlying).map(([name, data]) => ({
-            name,
-            pnl: data.pnl,
-            pct: data.cost > 0 ? (data.pnl / data.cost) * 100 : null
-        }));
+        const symbolEntries = Object.entries(pnlByUnderlying)
+            .map(([name, data]) => ({
+                name,
+                pnl: data.pnl,
+                pct: data.cost > 0 ? (data.pnl / data.cost) * 100 : null,
+                count: data.count
+            }))
+            .filter(entry => entry.count > 1);
         const top6WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 6);
         const top6BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 6);
 

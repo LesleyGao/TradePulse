@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Upload, Trash2 } from 'lucide-react';
+import { Activity, Upload, Trash2, Plus } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 interface LayoutProps {
@@ -11,6 +11,7 @@ interface LayoutProps {
     statsPeriod: 'total' | number;
     handlePeriodChange: (period: 'total' | number) => void;
     onUploadClick: () => void;
+    onAddTradeClick: () => void;
     onClearData: () => void;
 }
 
@@ -23,6 +24,7 @@ export const Layout = ({
     statsPeriod,
     handlePeriodChange,
     onUploadClick,
+    onAddTradeClick,
     onClearData,
 }: LayoutProps) => {
     return (
@@ -85,6 +87,16 @@ export const Layout = ({
                                 >
                                     <Upload className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">Upload CSV</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={onAddTradeClick}
+                                    className="text-xs font-semibold text-white bg-stone-900 hover:bg-stone-800 px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-stone-200"
+                                    title="Manually add a trade"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Add Trade</span>
                                 </button>
 
                                 {yearsWithData.length > 0 && (

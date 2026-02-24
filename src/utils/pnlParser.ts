@@ -246,8 +246,9 @@ export function calculatePnl(trades: Trade[]): PnlPoint[] {
 
   for (const day of days) {
     const dayTrades = byDay[day];
+    const isOption = (symbol: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(symbol.trim());
     const premium = (t: Trade) =>
-      t.quantity * t.price * OPTION_CONTRACT_MULTIPLIER;
+      t.quantity * t.price * (isOption(t.symbol) ? OPTION_CONTRACT_MULTIPLIER : 1);
     const sellPremium = dayTrades
       .filter((t) => t.type === 'SELL')
       .reduce((s, t) => s + premium(t), 0);
