@@ -122,6 +122,7 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                                 <tr className="text-left border-b border-stone-50">
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-stone-400">Rank</th>
                                     <th className="px-5 py-4 text-left text-[10px] font-black uppercase tracking-widest text-stone-400">Underlying</th>
+                                    <th className="px-5 py-4 text-center text-[10px] font-black uppercase tracking-widest text-stone-400">Trades</th>
                                     <th className="px-5 py-4 text-right text-[10px] font-black uppercase tracking-widest text-stone-400">PnL Pct</th>
                                 </tr>
                             </thead>
@@ -136,6 +137,11 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                                         <td className="px-5 py-4">
                                             <div className="text-sm font-black text-stone-900">{item.name}</div>
                                         </td>
+                                        <td className="px-5 py-4 text-center">
+                                            <span className="px-2.5 py-1 rounded-lg bg-stone-100 text-[10px] font-black text-stone-600 tabular-nums">
+                                                {item.count}
+                                            </span>
+                                        </td>
                                         <td className={cn(
                                             "px-5 py-4 text-right font-black tabular-nums text-sm",
                                             toggle === 'worst' ? "text-rose-600" : "text-emerald-600"
@@ -146,7 +152,7 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                                 ))}
                                 {(toggle === 'worst' ? topWorstSymbols : topBestSymbols).length === 0 && (
                                     <tr>
-                                        <td colSpan={3} className="px-5 py-16 text-center">
+                                        <td colSpan={4} className="px-5 py-16 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-30">
                                                 <Target className="w-10 h-10 text-stone-400" />
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-center px-4">No Recurring Trades<br />(Min. 2 Days Traded)</span>
