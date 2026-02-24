@@ -42,6 +42,7 @@ export default function App() {
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
   const [isAddingTrade, setIsAddingTrade] = useState(false);
+  const [minTrades, setMinTrades] = useState(2);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -50,7 +51,7 @@ export default function App() {
     tradesForStats,
     stats,
     pnlDataForStats
-  } = useTradeStats(trades, statsPeriod, maxLossesPerDay);
+  } = useTradeStats(trades, statsPeriod, maxLossesPerDay, minTrades);
 
   const TRADES_PAGE_SIZE = 10;
   const tradesTotalPages = Math.max(1, Math.ceil(groupedTradesForStats.length / TRADES_PAGE_SIZE));
@@ -286,6 +287,8 @@ export default function App() {
                 stats={stats}
                 topWorstSymbols={stats?.top6WorstByUnderlying ?? []}
                 topBestSymbols={stats?.top6BestByUnderlying ?? []}
+                minTrades={minTrades}
+                setMinTrades={setMinTrades}
               />
 
               <BreakdownSection

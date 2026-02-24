@@ -34,7 +34,7 @@ export function parseOccSymbol(symbol: string): OccParsed | null {
 
 const OPTION_MULTIPLIER = 100;
 
-export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, maxLossesPerDay: number) => {
+export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, maxLossesPerDay: number, minTrades: number = 2) => {
     const tradesForActivity = useMemo(
         () => trades,
         [trades]
@@ -229,7 +229,7 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
                 pct: data.cost > 0 ? (data.pnl / data.cost) * 100 : null,
                 count: data.count
             }))
-            .filter(entry => entry.count > 1);
+            .filter(entry => entry.count >= minTrades);
         const top6WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 6);
         const top6BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 6);
 
@@ -319,7 +319,7 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             putWinRate,
             winningType
         };
-    }, [pnlData, pnlDataForStats, groupedTradesForStats, tradesForStats, statsPeriod, maxLossesPerDay]);
+    }, [pnlData, pnlDataForStats, groupedTradesForStats, tradesForStats, statsPeriod, maxLossesPerDay, minTrades]);
 
     return {
         tradesForActivity,

@@ -6,9 +6,11 @@ interface InsightsSectionProps {
     stats: any;
     topWorstSymbols: any[];
     topBestSymbols: any[];
+    minTrades: number;
+    setMinTrades: (n: number) => void;
 }
 
-export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: InsightsSectionProps) => {
+export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols, minTrades, setMinTrades }: InsightsSectionProps) => {
     const [toggle, setToggle] = useState<'worst' | 'best'>('worst');
 
     if (!stats) return null;
@@ -90,7 +92,16 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                 <div className="flex items-center justify-between h-[68px]">
                     <div className="min-w-0">
                         <h2 className="text-xl font-bold text-stone-900 tracking-tight">Top Performance</h2>
-                        <p className="text-xs text-stone-500 mt-1 font-medium italic underline decoration-stone-200 underline-offset-4">Only includes symbols traded more than once.</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[10px] text-stone-500 font-medium uppercase tracking-widest">Min. Trades:</p>
+                            <input
+                                type="number"
+                                min="1"
+                                value={minTrades}
+                                onChange={(e) => setMinTrades(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-12 bg-stone-100 border border-stone-200 rounded-md px-1 py-0.5 text-[10px] font-black text-stone-900 focus:ring-1 focus:ring-stone-400 outline-none transition-all"
+                            />
+                        </div>
                     </div>
 
                     <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200/50 shrink-0 ml-4">
@@ -155,7 +166,7 @@ export const InsightsSection = ({ stats, topWorstSymbols, topBestSymbols }: Insi
                                         <td colSpan={4} className="px-5 py-16 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-30">
                                                 <Target className="w-10 h-10 text-stone-400" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-center px-4">No Recurring Trades<br />(Min. 2 Days Traded)</span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-center px-4">No Symbols Found<br />(Min. {minTrades} Trades)</span>
                                             </div>
                                         </td>
                                     </tr>
