@@ -222,8 +222,8 @@ export const useTradeStats = (trades: Trade[], statsPeriod: 'total' | number, ma
             pnl: data.pnl,
             pct: data.cost > 0 ? (data.pnl / data.cost) * 100 : null
         }));
-        const top5WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 6);
-        const top5BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 6);
+        const top5WorstByUnderlying = [...symbolEntries].sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity)).slice(0, 5);
+        const top5BestByUnderlying = [...symbolEntries].sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity)).slice(0, 5);
 
         // Consecutive streaks
         const sorted = [...groupedTradesForStats].sort((a, b) => a.date.getTime() - b.date.getTime());

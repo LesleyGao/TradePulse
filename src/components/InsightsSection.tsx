@@ -43,7 +43,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
             {/* Left Column: Insights */}
             <div className="flex flex-col h-full space-y-6">
-                <div>
+                <div className="h-[68px] flex flex-col justify-center">
                     <h2 className="text-xl font-bold text-stone-900 tracking-tight">Performance Insights</h2>
                     <p className="text-sm text-stone-500 mt-1">Smart analysis of your trading data.</p>
                 </div>
@@ -76,7 +76,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
 
             {/* Right Column: Top Symbols */}
             <div className="flex flex-col h-full space-y-6">
-                <div className="flex items-end justify-between">
+                <div className="flex items-center justify-between h-[68px]">
                     <div className="min-w-0">
                         <h2 className="text-xl font-bold text-stone-900 tracking-tight">Top Performance</h2>
                         <p className="text-sm text-stone-500 mt-1 truncate">Best and worst underlying assets.</p>
@@ -90,7 +90,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                 toggle === 'worst' ? "bg-white text-stone-900 shadow-sm shadow-stone-200/50" : "text-stone-500 hover:text-stone-800"
                             )}
                         >
-                            Worst 6
+                            Worst 5
                         </button>
                         <button
                             onClick={() => setToggle('best')}
@@ -99,7 +99,7 @@ export const InsightsSection = ({ stats, top5Worst, top5Best }: InsightsSectionP
                                 toggle === 'best' ? "bg-white text-stone-900 shadow-sm shadow-stone-200/50" : "text-stone-500 hover:text-stone-800"
                             )}
                         >
-                            Best 6
+                            Best 5
                         </button>
                     </div>
                 </div>
