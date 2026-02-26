@@ -1,7 +1,10 @@
 node_modules/
 build/
 dist/
+.next/
 coverage/
+data/
+public/uploads/
 .DS_Store
 *.log
 .env*

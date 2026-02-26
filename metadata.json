@@ -1,5 +1,0 @@
-{
-  "name": "TradePulse: Broker Statement Analyzer",
-  "description": "Upload your broker statements to visualize PNL performance with technical indicators like 20SMA.",
-  "requestFramePermissions": []
-}
