@@ -225,26 +225,36 @@ export function parseBrokerCsv(csvString: string): Trade[] {
   return trades.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
+/** Strip the #rtN suffix used to distinguish same-symbol round-trips. */
+export function stripRoundTripSuffix(symbol: string): string {
+  return symbol.replace(/#rt\d+$/, '');
+}
+
 /**
  * Convert Supabase trade rows (round-trips) into client Trade[] (BUY/SELL pairs).
  * Each closed DB row becomes two fills so useTradeStats can group and compute PnL.
+ * Appends #rtN to symbol so multiple round-trips of the same contract stay separate.
  */
 export function supabaseTradesToClientTrades(
   dbTrades: Array<{
-    date: string; symbol: string; side: string; qty: number;
+    id?: number; date: string; symbol: string; side: string; qty: number;
     entry_price: number; exit_price: number | null; is_open: boolean;
+    entry_time?: string;
   }>
 ): Trade[] {
   const trades: Trade[] = [];
 
-  for (const t of dbTrades) {
+  for (let i = 0; i < dbTrades.length; i++) {
+    const t = dbTrades[i];
     if (t.is_open || t.exit_price == null) continue;
     const tradeDate = new Date(t.date + 'T12:00:00');
     const isLong = t.side === 'Long';
+    // Unique symbol per round-trip so useTradeStats groups them separately
+    const rtSymbol = `${t.symbol}#rt${t.id ?? i}`;
 
     trades.push({
       date: tradeDate,
-      symbol: t.symbol,
+      symbol: rtSymbol,
       type: isLong ? 'BUY' : 'SELL',
       quantity: t.qty,
       price: t.entry_price,
@@ -253,7 +263,7 @@ export function supabaseTradesToClientTrades(
 
     trades.push({
       date: tradeDate,
-      symbol: t.symbol,
+      symbol: rtSymbol,
       type: isLong ? 'SELL' : 'BUY',
       quantity: t.qty,
       price: t.exit_price,
@@ -285,7 +295,7 @@ export function calculatePnl(trades: Trade[]): PnlPoint[] {
 
   for (const day of days) {
     const dayTrades = byDay[day];
-    const isOption = (symbol: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(symbol.trim());
+    const isOption = (symbol: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(stripRoundTripSuffix(symbol).trim());
     const premium = (t: Trade) =>
       t.quantity * t.price * (isOption(t.symbol) ? OPTION_CONTRACT_MULTIPLIER : 1);
     const sellPremium = dayTrades

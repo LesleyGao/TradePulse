@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { format } from 'date-fns';
-import { type Trade, type PnlPoint, calculatePnl } from '../utils/pnlParser';
+import { type Trade, type PnlPoint, calculatePnl, stripRoundTripSuffix } from '../utils/pnlParser';
 
 /** OCC-style options symbol: root (1–6 letters) + YYMMDD + C|P + 8-digit strike. */
 export function isOccOptionSymbol(symbol: string): boolean {
-    return /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(symbol.trim());
+    return /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(stripRoundTripSuffix(symbol).trim());
 }
 
 export interface OccParsed {
@@ -15,7 +15,7 @@ export interface OccParsed {
 }
 
 export function parseOccSymbol(symbol: string): OccParsed | null {
-    const m = symbol.trim().match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/i);
+    const m = stripRoundTripSuffix(symbol).trim().match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/i);
     if (!m) return null;
     const [, root, yymmdd, cp, strikeStr] = m;
     const yy = parseInt(yymmdd.slice(0, 2), 10);

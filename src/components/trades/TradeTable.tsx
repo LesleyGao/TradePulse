@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Trash2, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/utils/cn';
+import { stripRoundTripSuffix } from '@/utils/pnlParser';
 
 interface TradeTableProps {
     displayedTrades: any[];
@@ -121,7 +122,7 @@ export const TradeTable = ({
                                 // Calculate Return % for the row
                                 const dayKey = format(trade.date, 'yyyy-MM-dd');
                                 const fills = tradesForStats.filter(f => format(f.date, 'yyyy-MM-dd') === dayKey && f.symbol === trade.symbol);
-                                const isOption = (sym: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(sym.trim());
+                                const isOption = (sym: string) => /^[A-Z]{1,6}\d{6}[CP]\d{8}$/i.test(stripRoundTripSuffix(sym).trim());
                                 const multiplier = isOption(trade.symbol) ? OPTION_MULTIPLIER : 1;
                                 const cost = fills.filter(f => f.type === trade.type).reduce((sum, f) => sum + (f.quantity * f.price * multiplier), 0);
                                 const returnPct = cost > 0 ? (trade.pnl / cost) * 100 : null;
@@ -220,7 +221,7 @@ export const TradeTable = ({
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         if (window.confirm(`Delete all ${fills.length} fills for ${underlying} on this date?`)) {
-                                                                            onDeleteTrades(trade.symbol, format(trade.date, 'yyyy-MM-dd'));
+                                                                            onDeleteTrades(stripRoundTripSuffix(trade.symbol), format(trade.date, 'yyyy-MM-dd'));
                                                                         }
                                                                     }}
                                                                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100 group"

@@ -8,6 +8,7 @@ import {
 import { ChevronLeft, ChevronRight, X, BookOpen, ChevronRight as ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { parseOccSymbol } from '@/hooks/useTradeStats';
+import { stripRoundTripSuffix } from '@/utils/pnlParser';
 
 interface GroupedTrade {
   date: Date;
@@ -304,7 +305,7 @@ function TradeDetailPanel({ date, stats, onClose }: {
                 return (
                   <tr
                     key={`${trade.symbol}-${i}`}
-                    onClick={() => router.push(`/journal/${date}?symbol=${encodeURIComponent(trade.symbol)}`)}
+                    onClick={() => router.push(`/journal/${date}?symbol=${encodeURIComponent(stripRoundTripSuffix(trade.symbol))}`)}
                     className="border-b border-stone-50 last:border-b-0 hover:bg-white/80 transition-colors cursor-pointer group"
                   >
                     <td className="py-2.5 px-6 font-mono text-xs font-medium text-stone-700">{contractLabel}</td>
