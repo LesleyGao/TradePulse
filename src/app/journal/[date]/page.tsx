@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
-import { ArrowLeft, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Save, ChevronDown, ChevronUp, ImagePlus, X, Check } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/utils/cn';
 import type { Regime, ProfitMode, RuleViolation } from '@/lib/types';
@@ -32,20 +32,7 @@ interface DbTrade {
   entry_time: string;
   exit_time: string | null;
   rule_violations: string | null;
-}
-
-interface DailySummary {
-  id: number;
-  date: string;
-  total_pnl: number;
-  trade_count: number;
-  win_count: number;
-  loss_count: number;
-  regime_predicted: string | null;
-  regime_actual: string | null;
-  regime_accuracy_note: string | null;
-  adjustment_for_tomorrow: string | null;
-  user_notes: string | null;
+  chart_screenshot_path: string | null;
 }
 
 const SETUPS = ['Kiss n Go', 'Breakout / Breakdown', 'Open Space'];
@@ -69,11 +56,15 @@ export default function JournalDatePage() {
   const targetSymbol = searchParams.get('symbol');
 
   const [trades, setTrades] = useState<DbTrade[]>([]);
-  const [summary, setSummary] = useState<DailySummary | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<number, boolean>>({});
+  const [saved, setSaved] = useState<Record<number, boolean>>({});
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const [dayPnl, setDayPnl] = useState<number>(0);
+  const [predictedRegime, setPredictedRegime] = useState<string | null>(null);
   const targetTradeRef = useRef<HTMLDivElement>(null);
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -86,49 +77,103 @@ export default function JournalDatePage() {
         const tradesList: DbTrade[] = json.data ?? json;
         setTrades(tradesList);
 
-        // Auto-expand trade matching the symbol query param
         if (targetSymbol) {
           const match = tradesList.find(t => t.symbol === targetSymbol);
           if (match) setExpandedId(match.id);
         }
       }
-      if (summaryRes.ok) setSummary(await summaryRes.json());
+      if (summaryRes.ok) {
+        const s = await summaryRes.json();
+        if (s) {
+          setDayPnl(s.total_pnl ?? 0);
+          setPredictedRegime(s.regime_predicted);
+        }
+      }
     } catch { }
     setLoading(false);
   }, [dateStr, targetSymbol]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Scroll to the target trade once it's expanded and rendered
   useEffect(() => {
     if (expandedId && targetSymbol && targetTradeRef.current) {
       targetTradeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [expandedId, targetSymbol, loading]);
 
-  const updateTrade = async (id: number, updates: Record<string, string | null>) => {
-    setSaving(prev => ({ ...prev, [id]: true }));
+  const saveTrade = async (trade: DbTrade) => {
+    setSaving(prev => ({ ...prev, [trade.id]: true }));
+    setSaved(prev => ({ ...prev, [trade.id]: false }));
     try {
-      await fetch(`/api/trades/${id}`, {
+      await fetch(`/api/trades/${trade.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({
+          setup_type: trade.setup_type,
+          regime: trade.regime,
+          profit_mode: trade.profit_mode,
+          thesis: trade.thesis,
+          what_went_right: trade.what_went_right,
+          what_went_wrong: trade.what_went_wrong,
+          key_learning: trade.key_learning,
+          chart_screenshot_path: trade.chart_screenshot_path,
+        }),
       });
-      setTrades(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+      setSaved(prev => ({ ...prev, [trade.id]: true }));
+      setTimeout(() => setSaved(prev => ({ ...prev, [trade.id]: false })), 2000);
     } catch { }
-    setSaving(prev => ({ ...prev, [id]: false }));
+    setSaving(prev => ({ ...prev, [trade.id]: false }));
   };
 
-  const updateSummary = async (updates: Record<string, string | null>) => {
-    if (!summary) return;
+  const updateLocalTrade = (id: number, field: string, value: string | null) => {
+    setTrades(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+  };
+
+  const handleScreenshot = async (tradeId: number, file: File) => {
+    setUploading(prev => ({ ...prev, [tradeId]: true }));
     try {
-      await fetch(`/api/daily-summary/${dateStr}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      setSummary(prev => prev ? { ...prev, ...updates } : prev);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'chart');
+      formData.append('date', dateStr);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const json = await res.json();
+        const path = json.data?.path;
+        if (path) {
+          updateLocalTrade(tradeId, 'chart_screenshot_path', path);
+          // Also persist immediately
+          await fetch(`/api/trades/${tradeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chart_screenshot_path: path }),
+          });
+        }
+      }
     } catch { }
+    setUploading(prev => ({ ...prev, [tradeId]: false }));
+  };
+
+  const handlePaste = (tradeId: number, e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleScreenshot(tradeId, file);
+        return;
+      }
+    }
+  };
+
+  const removeScreenshot = async (tradeId: number) => {
+    updateLocalTrade(tradeId, 'chart_screenshot_path', null);
+    await fetch(`/api/trades/${tradeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chart_screenshot_path: null }),
+    });
   };
 
   const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -148,14 +193,14 @@ export default function JournalDatePage() {
             {format(new Date(dateStr + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
           </h1>
           <div className="flex items-center gap-3 mt-1">
-            {summary?.regime_predicted && (
-              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-bold", REGIME_COLORS[summary.regime_predicted] || 'bg-stone-100 text-stone-600')}>
-                Predicted: {summary.regime_predicted}
+            {predictedRegime && (
+              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-bold", REGIME_COLORS[predictedRegime] || 'bg-stone-100 text-stone-600')}>
+                Predicted: {predictedRegime}
               </span>
             )}
-            {summary && (
-              <span className={cn("text-lg font-black", summary.total_pnl >= 0 ? "text-emerald-700" : "text-rose-700")}>
-                {summary.total_pnl >= 0 ? '+' : ''}{currencyFmt.format(summary.total_pnl)}
+            {dayPnl !== 0 && (
+              <span className={cn("text-lg font-black", dayPnl >= 0 ? "text-emerald-700" : "text-rose-700")}>
+                {dayPnl >= 0 ? '+' : ''}{currencyFmt.format(dayPnl)}
               </span>
             )}
           </div>
@@ -178,7 +223,7 @@ export default function JournalDatePage() {
                   </span>
                   <div className="text-left">
                     <div className="text-sm font-bold text-stone-900">{trade.underlying} ${trade.strike}</div>
-                    <div className="text-xs text-stone-400">{trade.qty} contract{trade.qty > 1 ? 's' : ''} · {trade.holding_minutes ?? '?'}min</div>
+                    <div className="text-xs text-stone-400">{trade.qty} contract{trade.qty > 1 ? 's' : ''} · {trade.holding_minutes != null ? `${Math.round(trade.holding_minutes)}min` : '?'}</div>
                   </div>
                   {trade.setup_type && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-stone-100 text-stone-600">{trade.setup_type}</span>
@@ -206,7 +251,55 @@ export default function JournalDatePage() {
               </button>
 
               {isExpanded && (
-                <div className="border-t border-stone-100 p-5 bg-stone-50/30 space-y-4">
+                <div className="border-t border-stone-100 p-5 bg-stone-50/30 space-y-4" onPaste={e => handlePaste(trade.id, e)}>
+                  {/* Chart Screenshot */}
+                  <div>
+                    <label className={labelClass}>Chart Screenshot</label>
+                    {trade.chart_screenshot_path ? (
+                      <div className="relative group">
+                        <img
+                          src={trade.chart_screenshot_path}
+                          alt="Trade chart"
+                          className="w-full max-h-[400px] object-contain rounded-xl border border-stone-200 bg-white"
+                        />
+                        <button
+                          onClick={() => removeScreenshot(trade.id)}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-stone-900/70 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => fileInputRefs.current[trade.id]?.click()}
+                        className={cn(
+                          "border-2 border-dashed border-stone-200 rounded-xl p-8 text-center cursor-pointer hover:border-stone-400 hover:bg-white transition-all",
+                          uploading[trade.id] && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <input
+                          ref={el => { fileInputRefs.current[trade.id] = el; }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleScreenshot(trade.id, file);
+                            e.target.value = '';
+                          }}
+                        />
+                        {uploading[trade.id] ? (
+                          <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin mx-auto" />
+                        ) : (
+                          <>
+                            <ImagePlus className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                            <p className="text-xs font-bold text-stone-400">Click to upload or paste (Ctrl+V) a chart screenshot</p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Rule Violations */}
                   {(() => {
                     const violations: RuleViolation[] = trade.rule_violations ? JSON.parse(trade.rule_violations) : [];
@@ -226,21 +319,21 @@ export default function JournalDatePage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className={labelClass}>Setup Type</label>
-                      <select value={trade.setup_type || ''} onChange={e => updateTrade(trade.id, { setup_type: e.target.value || null })} className={inputClass}>
+                      <select value={trade.setup_type || ''} onChange={e => updateLocalTrade(trade.id, 'setup_type', e.target.value || null)} className={inputClass}>
                         <option value="">Select setup...</option>
                         {SETUPS.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className={labelClass}>Regime</label>
-                      <select value={trade.regime || ''} onChange={e => updateTrade(trade.id, { regime: e.target.value || null })} className={inputClass}>
+                      <select value={trade.regime || ''} onChange={e => updateLocalTrade(trade.id, 'regime', e.target.value || null)} className={inputClass}>
                         <option value="">Select regime...</option>
                         {REGIMES.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className={labelClass}>Profit Mode</label>
-                      <select value={trade.profit_mode || ''} onChange={e => updateTrade(trade.id, { profit_mode: e.target.value || null })} className={inputClass}>
+                      <select value={trade.profit_mode || ''} onChange={e => updateLocalTrade(trade.id, 'profit_mode', e.target.value || null)} className={inputClass}>
                         <option value="">Select mode...</option>
                         {PROFIT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
@@ -248,57 +341,52 @@ export default function JournalDatePage() {
                   </div>
                   <div>
                     <label className={labelClass}>Thesis at Entry</label>
-                    <textarea value={trade.thesis || ''} onChange={e => setTrades(prev => prev.map(t => t.id === trade.id ? { ...t, thesis: e.target.value } : t))} onBlur={e => updateTrade(trade.id, { thesis: e.target.value || null })} className={cn(inputClass, "min-h-[60px] resize-y")} placeholder="What was your thesis for this trade?" />
+                    <textarea value={trade.thesis || ''} onChange={e => updateLocalTrade(trade.id, 'thesis', e.target.value)} className={cn(inputClass, "min-h-[60px] resize-y")} placeholder="What was your thesis for this trade?" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className={labelClass}>What Went Right</label>
-                      <textarea value={trade.what_went_right || ''} onChange={e => setTrades(prev => prev.map(t => t.id === trade.id ? { ...t, what_went_right: e.target.value } : t))} onBlur={e => updateTrade(trade.id, { what_went_right: e.target.value || null })} className={cn(inputClass, "min-h-[60px] resize-y")} />
+                      <textarea value={trade.what_went_right || ''} onChange={e => updateLocalTrade(trade.id, 'what_went_right', e.target.value)} className={cn(inputClass, "min-h-[60px] resize-y")} />
                     </div>
                     <div>
                       <label className={labelClass}>What Went Wrong</label>
-                      <textarea value={trade.what_went_wrong || ''} onChange={e => setTrades(prev => prev.map(t => t.id === trade.id ? { ...t, what_went_wrong: e.target.value } : t))} onBlur={e => updateTrade(trade.id, { what_went_wrong: e.target.value || null })} className={cn(inputClass, "min-h-[60px] resize-y")} />
+                      <textarea value={trade.what_went_wrong || ''} onChange={e => updateLocalTrade(trade.id, 'what_went_wrong', e.target.value)} className={cn(inputClass, "min-h-[60px] resize-y")} />
                     </div>
                   </div>
                   <div>
                     <label className={labelClass}>Key Learning</label>
-                    <textarea value={trade.key_learning || ''} onChange={e => setTrades(prev => prev.map(t => t.id === trade.id ? { ...t, key_learning: e.target.value } : t))} onBlur={e => updateTrade(trade.id, { key_learning: e.target.value || null })} className={cn(inputClass, "min-h-[60px] resize-y")} placeholder="What's the one takeaway from this trade?" />
+                    <textarea value={trade.key_learning || ''} onChange={e => updateLocalTrade(trade.id, 'key_learning', e.target.value)} className={cn(inputClass, "min-h-[60px] resize-y")} placeholder="What's the one takeaway from this trade?" />
                   </div>
-                  {saving[trade.id] && <div className="text-xs text-stone-400 flex items-center gap-2"><div className="w-3 h-3 border border-stone-300 border-t-stone-600 rounded-full animate-spin" /> Saving...</div>}
+
+                  {/* Save Button */}
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={() => saveTrade(trade)}
+                      disabled={saving[trade.id]}
+                      className={cn(
+                        "flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-lg",
+                        saving[trade.id]
+                          ? "bg-stone-300 text-stone-500 cursor-wait"
+                          : saved[trade.id]
+                            ? "bg-emerald-600 text-white shadow-emerald-200"
+                            : "bg-stone-900 text-white hover:bg-stone-800 shadow-stone-200 active:scale-95"
+                      )}
+                    >
+                      {saving[trade.id] ? (
+                        <><div className="w-4 h-4 border-2 border-stone-400 border-t-white rounded-full animate-spin" /> Saving...</>
+                      ) : saved[trade.id] ? (
+                        <><Check className="w-4 h-4" /> Saved</>
+                      ) : (
+                        <><Save className="w-4 h-4" /> Save Journal Entry</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
-
-      {/* Daily Notes */}
-      {summary && (
-        <div className="card p-6 space-y-4">
-          <h2 className="text-sm font-black text-stone-800 uppercase tracking-widest">Daily Notes</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Actual Regime</label>
-              <select value={summary.regime_actual || ''} onChange={e => updateSummary({ regime_actual: e.target.value || null })} className={inputClass}>
-                <option value="">Select...</option>
-                {REGIMES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Regime Accuracy Note</label>
-              <input type="text" value={summary.regime_accuracy_note || ''} onChange={e => setSummary(prev => prev ? { ...prev, regime_accuracy_note: e.target.value } : prev)} onBlur={e => updateSummary({ regime_accuracy_note: e.target.value || null })} className={inputClass} placeholder="How accurate was the prediction?" />
-            </div>
-          </div>
-          <div>
-            <label className={labelClass}>Adjustment for Tomorrow</label>
-            <textarea value={summary.adjustment_for_tomorrow || ''} onChange={e => setSummary(prev => prev ? { ...prev, adjustment_for_tomorrow: e.target.value } : prev)} onBlur={e => updateSummary({ adjustment_for_tomorrow: e.target.value || null })} className={cn(inputClass, "min-h-[60px] resize-y")} placeholder="What will you change tomorrow based on today?" />
-          </div>
-          <div>
-            <label className={labelClass}>Notes</label>
-            <textarea value={summary.user_notes || ''} onChange={e => setSummary(prev => prev ? { ...prev, user_notes: e.target.value } : prev)} onBlur={e => updateSummary({ user_notes: e.target.value || null })} className={cn(inputClass, "min-h-[80px] resize-y")} placeholder="General thoughts on today's session..." />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
