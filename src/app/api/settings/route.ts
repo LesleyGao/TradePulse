@@ -18,6 +18,10 @@ export async function PUT(request: NextRequest) {
     tradingWindowStart: 'trading_window_start',
     tradingWindowEnd: 'trading_window_end',
     defaultTimezone: 'default_timezone',
+    stopLossPercent: 'stop_loss_percent',
+    takeProfitPercent: 'take_profit_percent',
+    maxPositionSize: 'max_position_size',
+    oneAndDoneEnabled: 'one_and_done_enabled',
   };
 
   const entries = Object.entries(body)

@@ -40,8 +40,10 @@ export interface PremarketAnalysis {
   date: string;
   screenshot_path: string | null;
   qqq_price: number | null;
+  prior_close: number | null;
   vix: number | null;
   vix_term_structure: VixTermStructure | null;
+  vix_1d_max: number | null;
   gex_value: number | null;
   gex_sign: GexSign | null;
   dex_value: number | null;
@@ -53,8 +55,14 @@ export interface PremarketAnalysis {
   vol_trigger: number | null;
   hvl: number | null;
   zero_gamma: number | null;
+  one_day_min: number | null;
+  one_day_max: number | null;
   blindspots: string | null; // JSON array
+  gex_levels: string | null; // JSON array
   regime: Regime;
+  chop_assessment: string | null; // JSON
+  vix_veto: string | null; // JSON
+  profit_mode: string | null;
   ai_recommendation: string | null; // JSON
   ai_trade_call: TradeCall | null;
   primary_scenario: string | null;
@@ -84,6 +92,7 @@ export interface Trade {
   holding_minutes: number | null;
   setup_type: string | null;
   regime: Regime | null;
+  profit_mode: ProfitMode | null;
   thesis: string | null;
   what_went_right: string | null;
   what_went_wrong: string | null;
@@ -143,8 +152,12 @@ export interface PremarketInput {
   date: string;
   screenshotPath?: string;
   qqqPrice: number;
+  priorClose?: number;
   vix: number;
   vixTermStructure?: VixTermStructure;
+  vix1DMax?: number;
+  vixRtT1?: number;
+  vixHvl?: number;
   gexValue: number;
   dexValue: number;
   dexTrend: DexTrend;
@@ -154,7 +167,10 @@ export interface PremarketInput {
   volTrigger: number;
   hvl?: number;
   zeroGamma?: number;
+  oneDayMin?: number;
+  oneDayMax?: number;
   blindspots: BlindspotLevel[];
+  gexLevels?: BlindspotLevel[];
   notes?: string;
 }
 
@@ -205,6 +221,7 @@ export interface RoundTrip {
   pnlPercent: number;
   holdingMinutes: number;
   date: string;
+  profitMode?: ProfitMode;
 }
 
 export interface CsvParseResult {
@@ -263,6 +280,8 @@ export interface AiScenario {
   entryTrigger: string;
   target: number;
   stop: number;
+  hardStopPercent?: number;
+  profitMode?: ProfitMode;
   positionSizing?: string;
 }
 
@@ -272,6 +291,10 @@ export interface AiPremarketResponse {
   regime: Regime;
   regimeConfidence: 'High' | 'Medium' | 'Low';
   regimeNuance: string;
+  chopAssessment: ChopAssessment | null;
+  vixVeto: VixVeto | null;
+  profitMode: ProfitMode;
+  profitModeReasoning: string | null;
   primaryScenario: AiScenario;
   alternativeScenario: AiScenario | null;
   levelsToWatch: {
@@ -280,6 +303,7 @@ export interface AiPremarketResponse {
     pinTarget: { level: number; reason: string } | null;
   };
   riskNotes: string[];
+  dailyRulesReminder: string | null;
   historicalComparison: string | null;
 }
 
@@ -289,10 +313,33 @@ export interface RuleViolation {
   message: string;
 }
 
+export type ProfitMode = 'Quick Take' | 'Runner';
+export type ChopVerdict = 'trend' | 'range';
+
 export interface AppSettings {
   dailyLossLimit: number;
   maxTradesPerDay: number;
   tradingWindowStart: string;
   tradingWindowEnd: string;
   defaultTimezone: string;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  maxPositionSize: number;
+  oneAndDoneEnabled: boolean;
+}
+
+export interface ChopAssessment {
+  gapConsumedPercent: number;
+  distanceToMajorWall: number;
+  levelDensity: 'traffic_jam' | 'open_space';
+  asymmetry: 'dense_below' | 'dense_above' | 'dense_both' | 'open_both';
+  chopSignals: number;
+  verdict: ChopVerdict;
+}
+
+export interface VixVeto {
+  vixVs1DMax: 'above' | 'below' | 'at';
+  vixTrend: 'expanding' | 'compressing' | 'flat';
+  vetoActive: boolean;
+  note: string;
 }

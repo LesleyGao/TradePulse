@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/utils/cn';
-import type { Regime } from '@/lib/types';
+import type { Regime, ProfitMode, RuleViolation } from '@/lib/types';
 
 interface DbTrade {
   id: number;
@@ -24,12 +24,14 @@ interface DbTrade {
   holding_minutes: number | null;
   setup_type: string | null;
   regime: string | null;
+  profit_mode: string | null;
   thesis: string | null;
   what_went_right: string | null;
   what_went_wrong: string | null;
   key_learning: string | null;
   entry_time: string;
   exit_time: string | null;
+  rule_violations: string | null;
 }
 
 interface DailySummary {
@@ -48,11 +50,16 @@ interface DailySummary {
 
 const SETUPS = ['Kiss n Go', 'Breakout / Breakdown', 'Open Space'];
 const REGIMES: Regime[] = ['Pinning', 'Grinding', 'Breakout-Ready', 'Crash'];
+const PROFIT_MODES: ProfitMode[] = ['Quick Take', 'Runner'];
 const REGIME_COLORS: Record<string, string> = {
   'Pinning': 'bg-violet-100 text-violet-800',
   'Grinding': 'bg-amber-100 text-amber-800',
   'Breakout-Ready': 'bg-blue-100 text-blue-800',
   'Crash': 'bg-rose-100 text-rose-800',
+};
+const VIOLATION_COLORS: Record<string, string> = {
+  'violation': 'bg-rose-50 border-rose-200 text-rose-700',
+  'warning': 'bg-amber-50 border-amber-200 text-amber-700',
 };
 
 export default function JournalDatePage() {
@@ -176,6 +183,14 @@ export default function JournalDatePage() {
                   {trade.setup_type && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-stone-100 text-stone-600">{trade.setup_type}</span>
                   )}
+                  {trade.profit_mode && (
+                    <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-bold", trade.profit_mode === 'Runner' ? 'bg-blue-100 text-blue-700' : 'bg-stone-100 text-stone-500')}>{trade.profit_mode}</span>
+                  )}
+                  {trade.rule_violations && JSON.parse(trade.rule_violations).length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-600">
+                      {JSON.parse(trade.rule_violations).filter((v: RuleViolation) => v.severity === 'violation').length > 0 ? 'VIOLATION' : 'WARNING'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
@@ -192,7 +207,23 @@ export default function JournalDatePage() {
 
               {isExpanded && (
                 <div className="border-t border-stone-100 p-5 bg-stone-50/30 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Rule Violations */}
+                  {(() => {
+                    const violations: RuleViolation[] = trade.rule_violations ? JSON.parse(trade.rule_violations) : [];
+                    if (violations.length === 0) return null;
+                    return (
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Rule Violations</label>
+                        {violations.map((v, i) => (
+                          <div key={i} className={cn("border rounded-lg px-3 py-2 text-xs font-semibold", VIOLATION_COLORS[v.severity] || VIOLATION_COLORS.warning)}>
+                            <span className="uppercase tracking-wider text-[9px] opacity-70">{v.severity}</span> {v.message}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className={labelClass}>Setup Type</label>
                       <select value={trade.setup_type || ''} onChange={e => updateTrade(trade.id, { setup_type: e.target.value || null })} className={inputClass}>
@@ -205,6 +236,13 @@ export default function JournalDatePage() {
                       <select value={trade.regime || ''} onChange={e => updateTrade(trade.id, { regime: e.target.value || null })} className={inputClass}>
                         <option value="">Select regime...</option>
                         {REGIMES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Profit Mode</label>
+                      <select value={trade.profit_mode || ''} onChange={e => updateTrade(trade.id, { profit_mode: e.target.value || null })} className={inputClass}>
+                        <option value="">Select mode...</option>
+                        {PROFIT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                   </div>

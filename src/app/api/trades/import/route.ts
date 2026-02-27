@@ -46,7 +46,14 @@ export async function POST(request: NextRequest) {
       .from('trades').select('*').eq('date', t.date as string);
     const todayPnl = (todayTrades || []).reduce((s: number, tr: Trade) => s + (tr.pnl_dollar ?? 0), 0);
     const violations = checkTradeRules(
-      { entry_time: t.entry_time as string, call_put: t.call_put as string },
+      {
+        entry_time: t.entry_time as string,
+        call_put: t.call_put as string,
+        pnl_dollar: t.pnl_dollar as number | null,
+        pnl_percent: t.pnl_percent as number | null,
+        entry_price: t.entry_price as number | undefined,
+        qty: t.qty as number | undefined,
+      },
       (todayTrades || []) as Trade[], todayPnl, settings
     );
 
@@ -72,6 +79,7 @@ export async function POST(request: NextRequest) {
       holding_minutes: t.holding_minutes,
       setup_type: t.setup_type || null,
       regime: t.regime || null,
+      profit_mode: (t.profit_mode as string) || 'Quick Take',
       thesis: t.thesis || null,
       what_went_right: t.what_went_right || null,
       what_went_wrong: t.what_went_wrong || null,

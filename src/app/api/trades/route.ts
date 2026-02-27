@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     holding_minutes: body.holding_minutes,
     setup_type: body.setup_type,
     regime: body.regime,
+    profit_mode: body.profit_mode || null,
     thesis: body.thesis,
     what_went_right: body.what_went_right,
     what_went_wrong: body.what_went_wrong,

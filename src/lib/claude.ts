@@ -44,7 +44,11 @@ function buildPremarketUserMessage(data: PremarketInput, todayTradeCount: number
   let msg = `## Today's Data (${data.date})
 
 QQQ Pre-market Price: $${data.qqqPrice}
+${data.priorClose ? `Prior Close: $${data.priorClose}\nOvernight Gap: ${(data.qqqPrice - data.priorClose).toFixed(2)} points (${((data.qqqPrice - data.priorClose) / data.priorClose * 100).toFixed(2)}%)` : ''}
 VIX: ${data.vix}${data.vixTermStructure ? ` (${data.vixTermStructure})` : ''}
+${data.vix1DMax ? `VIX 1D Max: ${data.vix1DMax}` : ''}
+${data.vixRtT1 ? `VIX RT T-1: ${data.vixRtT1}` : ''}
+${data.vixHvl ? `VIX HVL: ${data.vixHvl}` : ''}
 
 ## Dealer Positioning
 GEX: ${data.gexValue} (${gexSign})
@@ -56,11 +60,18 @@ Put Wall: $${data.putWall}
 ${data.gammaFlip ? `Gamma Flip: $${data.gammaFlip}` : ''}
 Vol Trigger: $${data.volTrigger}
 ${data.hvl ? `HVL: $${data.hvl}` : ''}
-${data.zeroGamma ? `Zero Gamma: $${data.zeroGamma}` : ''}`;
+${data.zeroGamma ? `Zero Gamma: $${data.zeroGamma}` : ''}
+${data.oneDayMin ? `1D Min: $${data.oneDayMin}` : ''}
+${data.oneDayMax ? `1D Max: $${data.oneDayMax}` : ''}`;
 
   if (data.blindspots.length > 0) {
     msg += '\n\n## Blindspot / Menthor Q Levels\n';
     msg += data.blindspots.map(b => `${b.label}: $${b.level}`).join('\n');
+  }
+
+  if (data.gexLevels && data.gexLevels.length > 0) {
+    msg += '\n\n## GEX Concentration Levels\n';
+    msg += data.gexLevels.map(g => `${g.label}: $${g.level}`).join('\n');
   }
 
   if (data.notes) {
