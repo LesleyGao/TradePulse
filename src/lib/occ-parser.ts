@@ -7,19 +7,19 @@ export interface OccParsed {
   strike: number;
 }
 
-export function parseOccSymbol(symbol: string): OccParsed {
-  // Format: [UNDERLYING][YYMMDD][C/P][STRIKE * 1000, zero-padded to 8 digits]
-  // Example: QQQ260226P00604000
-  const underlying = symbol.slice(0, 3);
-  const dateStr = symbol.slice(3, 9); // YYMMDD
-  const callPut = symbol.slice(9, 10) as CallPut;
-  const strikeRaw = symbol.slice(10);
-  const strike = parseInt(strikeRaw, 10) / 1000;
+export function parseOccSymbol(symbol: string): OccParsed | null {
+  // OCC format: [UNDERLYING 1-6 letters][YYMMDD][C/P][STRIKE * 1000, 8 digits]
+  // Examples: QQQ260226P00604000, NVDA260213C00195000, GOOGL260130C00340000
+  const match = symbol.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/i);
+  if (!match) return null;
+
+  const underlying = match[1].toUpperCase();
+  const dateStr = match[2]; // YYMMDD
+  const callPut = match[3].toUpperCase() as CallPut;
+  const strike = parseInt(match[4], 10) / 1000;
   const expiration = `20${dateStr.slice(0, 2)}-${dateStr.slice(2, 4)}-${dateStr.slice(4, 6)}`;
 
-  if (!underlying || !expiration || (callPut !== 'C' && callPut !== 'P') || isNaN(strike)) {
-    throw new Error(`Invalid OCC symbol: ${symbol}`);
-  }
+  if (isNaN(strike)) return null;
 
   return { underlying, expiration, callPut, strike };
 }

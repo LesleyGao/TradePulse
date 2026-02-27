@@ -88,10 +88,15 @@ function pairRoundTrips(orders: WebullOrder[]): CsvParseResult {
 
     // Pair buys with sells chronologically
     const minPairs = Math.min(buys.length, sells.length);
+    const parsed = parseOccSymbol(symbol);
+    if (!parsed) {
+      // Not a valid OCC symbol — skip this group
+      for (const o of symbolOrders) unmatched.push(o);
+      continue;
+    }
     for (let i = 0; i < minPairs; i++) {
       const buy = buys[i];
       const sell = sells[i];
-      const parsed = parseOccSymbol(symbol);
       const entryTime = parseFilledTime(buy.filledTime);
       const exitTime = parseFilledTime(sell.filledTime);
 
