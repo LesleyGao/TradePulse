@@ -10,7 +10,7 @@ import { parseBrokerCsv, type Trade } from '@/utils/pnlParser';
 import { SAMPLE_CSV } from '@/constants';
 
 import { MetricsGrid } from '@/components/dashboard/MetricsGrid';
-import { PnlChart } from '@/components/dashboard/PnlChart';
+import { CalendarView } from '@/components/dashboard/CalendarView';
 import { InsightsSection } from '@/components/dashboard/InsightsSection';
 import { BreakdownSection } from '@/components/dashboard/BreakdownSection';
 import { TradeTable } from '@/components/trades/TradeTable';
@@ -28,8 +28,6 @@ const getTradeKey = (t: Trade) => {
 export default function DashboardPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [hasRestoredSaved, setHasRestoredSaved] = useState(false);
-  const [showSma, setShowSma] = useState(true);
-  const [chartPeriod, setChartPeriod] = useState<'daily' | 'monthly' | 'yearly'>('daily');
   const [tradesPage, setTradesPage] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
@@ -47,7 +45,6 @@ export default function DashboardPage() {
     groupedTradesForStats,
     tradesForStats,
     stats,
-    pnlDataForStats
   } = useTradeStats(trades, statsPeriod, maxLossesPerDay, minTrades);
 
   const TRADES_PAGE_SIZE = 10;
@@ -201,7 +198,7 @@ export default function DashboardPage() {
             <MetricsGrid stats={stats} />
 
             <div className="grid grid-cols-1 gap-16">
-              <PnlChart data={pnlDataForStats} chartPeriod={chartPeriod} setChartPeriod={setChartPeriod} showSma={showSma} setShowSma={setShowSma} statsPeriod={statsPeriod} />
+              <CalendarView trades={groupedTradesForStats} />
               <InsightsSection stats={stats} topWorstSymbols={stats?.top6WorstByUnderlying ?? []} topBestSymbols={stats?.top6BestByUnderlying ?? []} minTrades={minTrades} setMinTrades={setMinTrades} />
               <BreakdownSection
                 callsVsPuts={{ total: stats?.tradeCount ?? 0, callPct: stats?.callPct ?? 50, putPct: stats?.putPct ?? 50, callCount: stats?.callCount ?? 0, putCount: stats?.putCount ?? 0, callWinRate: stats?.callWinRate ?? 0, putWinRate: stats?.putWinRate ?? 0, winningType: stats?.winningType }}
