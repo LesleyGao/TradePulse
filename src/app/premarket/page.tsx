@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Crosshair, Send, Upload, AlertTriangle, TrendingUp, TrendingDown, Minus, Shield } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -58,8 +58,71 @@ export default function PremarketPage() {
   const [screenshot, setScreenshot] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [recommendation, setRecommendation] = useState<AiPremarketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Load today's saved analysis from Supabase on mount
+  const loadTodayAnalysis = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`/api/premarket?date=${today}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const d = json.data;
+      if (!d) return;
+
+      // Populate form fields
+      if (d.qqq_price) setQqqPrice(String(d.qqq_price));
+      if (d.vix) setVix(String(d.vix));
+      if (d.vix_term_structure) setVixTermStructure(d.vix_term_structure);
+      if (d.gex_value != null) setGexValue(String(d.gex_value));
+      if (d.dex_value != null) setDexValue(String(d.dex_value));
+      if (d.dex_trend) setDexTrend(d.dex_trend);
+      if (d.call_wall) setCallWall(String(d.call_wall));
+      if (d.put_wall) setPutWall(String(d.put_wall));
+      if (d.gamma_flip) setGammaFlip(String(d.gamma_flip));
+      if (d.vol_trigger) setVolTrigger(String(d.vol_trigger));
+      if (d.hvl) setHvl(String(d.hvl));
+      if (d.zero_gamma) setZeroGamma(String(d.zero_gamma));
+      if (d.blindspots) {
+        const parsed = typeof d.blindspots === 'string' ? JSON.parse(d.blindspots) : d.blindspots;
+        if (Array.isArray(parsed)) setBlindspots(parsed);
+      }
+      if (d.screenshot_path) setScreenshot(d.screenshot_path);
+      if (d.user_notes) setNotes(d.user_notes);
+
+      // Reconstruct recommendation from stored JSON fields
+      if (d.primary_scenario) {
+        const primary = typeof d.primary_scenario === 'string' ? JSON.parse(d.primary_scenario) : d.primary_scenario;
+        const alt = d.alternative_scenario ? (typeof d.alternative_scenario === 'string' ? JSON.parse(d.alternative_scenario) : d.alternative_scenario) : null;
+        const levels = d.levels_to_watch ? (typeof d.levels_to_watch === 'string' ? JSON.parse(d.levels_to_watch) : d.levels_to_watch) : { bullishAbove: null, bearishBelow: null, pinTarget: null };
+        const risks = d.risk_notes ? (typeof d.risk_notes === 'string' ? JSON.parse(d.risk_notes) : d.risk_notes) : [];
+        const aiRec = d.ai_recommendation ? (typeof d.ai_recommendation === 'string' ? JSON.parse(d.ai_recommendation) : d.ai_recommendation) : null;
+
+        setRecommendation({
+          tradeCall: (d.ai_trade_call || 'Cautious') as TradeCall,
+          tradeCallReasoning: aiRec?.tradeCallReasoning || '',
+          regime: (d.regime || 'Grinding') as Regime,
+          regimeConfidence: aiRec?.regimeConfidence || 'Medium',
+          regimeNuance: aiRec?.regimeNuance || '',
+          chopAssessment: d.chop_assessment ? (typeof d.chop_assessment === 'string' ? JSON.parse(d.chop_assessment) : d.chop_assessment) : undefined,
+          vixVeto: d.vix_veto ? (typeof d.vix_veto === 'string' ? JSON.parse(d.vix_veto) : d.vix_veto) : undefined,
+          profitMode: d.profit_mode || 'Quick Take',
+          profitModeReasoning: aiRec?.profitModeReasoning || '',
+          primaryScenario: primary,
+          alternativeScenario: alt,
+          levelsToWatch: levels,
+          riskNotes: Array.isArray(risks) ? risks : [],
+          dailyRulesReminder: aiRec?.dailyRulesReminder || '',
+          historicalComparison: aiRec?.historicalComparison || '',
+        });
+      }
+    } catch { }
+    setPageLoading(false);
+  }, []);
+
+  useEffect(() => { loadTodayAnalysis(); }, [loadTodayAnalysis]);
 
   // Auto-classify regime
   const gexNum = parseFloat(gexValue);
@@ -126,6 +189,8 @@ export default function PremarketPage() {
 
   const inputClass = "w-full bg-white border border-stone-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-stone-900 focus:ring-2 focus:ring-stone-400 focus:border-transparent transition-all";
   const labelClass = "text-[10px] font-black uppercase tracking-[0.25em] text-stone-400 block mb-1.5";
+
+  if (pageLoading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin" /></div>;
 
   return (
     <div className="space-y-8">
