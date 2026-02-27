@@ -226,6 +226,45 @@ export function parseBrokerCsv(csvString: string): Trade[] {
 }
 
 /**
+ * Convert Supabase trade rows (round-trips) into client Trade[] (BUY/SELL pairs).
+ * Each closed DB row becomes two fills so useTradeStats can group and compute PnL.
+ */
+export function supabaseTradesToClientTrades(
+  dbTrades: Array<{
+    date: string; symbol: string; side: string; qty: number;
+    entry_price: number; exit_price: number | null; is_open: boolean;
+  }>
+): Trade[] {
+  const trades: Trade[] = [];
+
+  for (const t of dbTrades) {
+    if (t.is_open || t.exit_price == null) continue;
+    const tradeDate = new Date(t.date + 'T12:00:00');
+    const isLong = t.side === 'Long';
+
+    trades.push({
+      date: tradeDate,
+      symbol: t.symbol,
+      type: isLong ? 'BUY' : 'SELL',
+      quantity: t.qty,
+      price: t.entry_price,
+      amount: t.qty * t.entry_price * OPTION_CONTRACT_MULTIPLIER,
+    });
+
+    trades.push({
+      date: tradeDate,
+      symbol: t.symbol,
+      type: isLong ? 'SELL' : 'BUY',
+      quantity: t.qty,
+      price: t.exit_price,
+      amount: t.qty * t.exit_price * OPTION_CONTRACT_MULTIPLIER,
+    });
+  }
+
+  return trades.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
  * Compute realized P/L per day from option contracts.
  * Daily PnL = (sum of SELL proceeds) − (sum of BUY cost) for that day.
  * Always uses contracts × price × 100 per trade (option contract multiplier).

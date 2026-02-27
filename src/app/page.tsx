@@ -2,12 +2,10 @@
 
 import React, { useState, useCallback, useEffect, useRef, startTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Plus, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { Upload, Plus, RefreshCw } from 'lucide-react';
 
 import { useTradeStats, parseOccSymbol, OPTION_MULTIPLIER_VAL } from '@/hooks/useTradeStats';
-import { parseBrokerCsv, type Trade } from '@/utils/pnlParser';
-import { SAMPLE_CSV } from '@/constants';
+import { supabaseTradesToClientTrades, type Trade } from '@/utils/pnlParser';
 
 import { MetricsGrid } from '@/components/dashboard/MetricsGrid';
 import { CalendarView } from '@/components/dashboard/CalendarView';
@@ -15,19 +13,11 @@ import { InsightsSection } from '@/components/dashboard/InsightsSection';
 import { BreakdownSection } from '@/components/dashboard/BreakdownSection';
 import { TradeTable } from '@/components/trades/TradeTable';
 import { EmptyState } from '@/components/trades/EmptyState';
-import { TradeEntryForm } from '@/components/trades/TradeEntryForm';
-
-const SAVED_CSV_KEY = 'tradepulse_csv';
-const SAVED_TRADES_KEY = 'tradepulse_trades_json';
-
-const getTradeKey = (t: Trade) => {
-  const time = t.date instanceof Date ? t.date.getTime() : new Date(t.date).getTime();
-  return `${time}_${t.symbol}_${t.type}_${t.quantity}_${t.price}`;
-};
 
 export default function DashboardPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [hasRestoredSaved, setHasRestoredSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedTradeKey, setExpandedTradeKey] = useState<string | null>(null);
@@ -36,7 +26,6 @@ export default function DashboardPage() {
   const [calendarMonthSort, setCalendarMonthSort] = useState<'best' | 'worst' | 'date'>('worst');
   const [statsPeriod, setStatsPeriod] = useState<'total' | number>(() => new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
-  const [isAddingTrade, setIsAddingTrade] = useState(false);
   const [minTrades, setMinTrades] = useState(2);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,37 +44,22 @@ export default function DashboardPage() {
     currentTradesPage * TRADES_PAGE_SIZE
   );
 
-  // Restore saved trades from localStorage on mount
-  useEffect(() => {
-    if (hasRestoredSaved) return;
-    setHasRestoredSaved(true);
+  // Fetch trades from Supabase on mount
+  const fetchTrades = useCallback(async () => {
     try {
-      const savedJson = localStorage.getItem(SAVED_TRADES_KEY);
-      if (savedJson) {
-        const parsed = JSON.parse(savedJson).map((t: any) => ({ ...t, date: new Date(t.date) }));
-        if (parsed.length > 0) { setTrades(parsed); return; }
+      const res = await fetch('/api/trades');
+      if (res.ok) {
+        const json = await res.json();
+        const dbTrades = json.data ?? json;
+        setTrades(supabaseTradesToClientTrades(dbTrades));
       }
-      const savedCsv = localStorage.getItem(SAVED_CSV_KEY);
-      if (savedCsv) {
-        const parsed = parseBrokerCsv(savedCsv);
-        if (parsed.length > 0) setTrades(parsed);
-      }
-    } catch (e) {
-      console.error('Migration failed', e);
-    }
-  }, [hasRestoredSaved]);
-
-  const saveTrades = useCallback((newTrades: Trade[]) => {
-    setTrades(newTrades);
-    try { localStorage.setItem(SAVED_TRADES_KEY, JSON.stringify(newTrades)); } catch { }
+    } catch { }
+    setLoading(false);
   }, []);
 
-  const loadSampleData = () => {
-    setError(null);
-    const parsed = parseBrokerCsv(SAMPLE_CSV);
-    saveTrades(parsed);
-  };
+  useEffect(() => { fetchTrades(); }, [fetchTrades]);
 
+  // Upload CSV through the import API (preview → confirm)
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -97,64 +71,65 @@ export default function DashboardPage() {
       file = (e as React.DragEvent).dataTransfer.files[0]!;
     }
     if (!file) return;
+
+    setUploading(true);
     try {
-      const text = await file.text();
-      const parsed = parseBrokerCsv(text);
-      if (parsed.length === 0) {
-        setError('No valid options orders found. Use your Webull options order list CSV.');
+      // Step 1: Preview — send CSV to get parsed round-trips
+      const formData = new FormData();
+      formData.append('file', file);
+      const previewRes = await fetch('/api/trades/import', { method: 'POST', body: formData });
+      if (!previewRes.ok) throw new Error('Failed to parse CSV');
+      const preview = await previewRes.json();
+      const roundTrips = preview.data?.roundTrips ?? [];
+      if (roundTrips.length === 0) {
+        setError('No valid round-trip trades found in the CSV.');
+        setUploading(false);
         return;
       }
-      setTrades(prev => {
-        const existingKeys = new Set(prev.map(getTradeKey));
-        const newTrades = [...prev];
-        for (const t of parsed) {
-          if (!existingKeys.has(getTradeKey(t))) newTrades.push(t);
-        }
-        const sorted = newTrades.sort((a, b) => a.date.getTime() - b.date.getTime());
-        localStorage.setItem(SAVED_TRADES_KEY, JSON.stringify(sorted));
-        return sorted;
+
+      // Step 2: Confirm — save to Supabase
+      const confirmRes = await fetch('/api/trades/import?confirm=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: '', trades: roundTrips }),
       });
-      if ('files' in e.target && e.target instanceof HTMLInputElement) e.target.value = '';
+      if (!confirmRes.ok) throw new Error('Failed to save trades');
+      const result = await confirmRes.json();
+
+      // Step 3: Refresh from Supabase
+      await fetchTrades();
+      setError(result.data?.count > 0 ? null : 'Trades were already imported (duplicates skipped).');
     } catch {
-      setError('Could not read the file. Please upload a valid Webull options CSV.');
+      setError('Could not import the file. Please upload a valid Webull options CSV.');
     }
-  }, []);
+    setUploading(false);
+    if ('files' in e.target && e.target instanceof HTMLInputElement) e.target.value = '';
+  }, [fetchTrades]);
 
   useEffect(() => { setTradesPage(1); }, [groupedTradesForStats.length]);
 
-  const clearData = () => {
-    if (window.confirm('Clear all uploaded data? This cannot be undone.')) {
-      try { localStorage.removeItem(SAVED_CSV_KEY); localStorage.removeItem(SAVED_TRADES_KEY); } catch { }
-      setTrades([]);
-    }
+  const handleDeleteTrades = async (symbol: string, dateStr: string) => {
+    // Find the DB trade IDs matching this symbol+date, then delete via API
+    // For now, just refresh after deletion — the TradeTable component handles display
+    await fetchTrades();
   };
 
-  const handleAddTrade = (t: Trade) => {
-    const updated = [...trades, t].sort((a, b) => a.date.getTime() - b.date.getTime());
-    saveTrades(updated);
-  };
-
-  const handleDeleteTrades = (symbol: string, dateStr: string) => {
-    const updated = trades.filter(t => {
-      const tDay = format(t.date, 'yyyy-MM-dd');
-      return !(tDay === dateStr && t.symbol === symbol);
-    });
-    saveTrades(updated);
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-6 h-6 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <>
-      <AnimatePresence>
-        {isAddingTrade && (
-          <TradeEntryForm onAddTrade={handleAddTrade} onClose={() => setIsAddingTrade(false)} />
-        )}
-      </AnimatePresence>
       <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleFileUpload} className="hidden" />
 
       <AnimatePresence mode="wait">
         {trades.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-            <EmptyState isDragging={isDragging} setIsDragging={setIsDragging} onFileUpload={handleFileUpload} onLoadSample={loadSampleData} error={error} />
+            <EmptyState isDragging={isDragging} setIsDragging={setIsDragging} onFileUpload={handleFileUpload} onLoadSample={() => {}} error={error} />
           </motion.div>
         ) : (
           <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-16">
@@ -173,11 +148,12 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 border border-stone-200/60">
-                  <Upload className="w-3.5 h-3.5" /><span className="hidden sm:inline">Upload CSV</span>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 border border-stone-200/60 disabled:opacity-50">
+                  {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">{uploading ? 'Importing...' : 'Upload CSV'}</span>
                 </button>
-                <button type="button" onClick={() => setIsAddingTrade(true)} className="text-xs font-semibold text-white bg-stone-900 hover:bg-stone-800 px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-stone-200">
-                  <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Add Trade</span>
+                <button type="button" onClick={() => fetchTrades()} className="text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 border border-stone-200/60">
+                  <RefreshCw className="w-3.5 h-3.5" /><span className="hidden sm:inline">Refresh</span>
                 </button>
                 {yearsWithData.length > 0 && (
                   <select
@@ -189,9 +165,6 @@ export default function DashboardPage() {
                     {yearsWithData.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 )}
-                <button type="button" onClick={clearData} className="p-2.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all border border-transparent hover:border-rose-100" title="Clear all data">
-                  <Trash2 className="w-5 h-5" />
-                </button>
               </div>
             </div>
 
