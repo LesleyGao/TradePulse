@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { ArrowLeft, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
@@ -57,13 +57,16 @@ const REGIME_COLORS: Record<string, string> = {
 
 export default function JournalDatePage() {
   const params = useParams() as { date: string };
+  const searchParams = useSearchParams();
   const dateStr = params.date;
+  const targetSymbol = searchParams.get('symbol');
 
   const [trades, setTrades] = useState<DbTrade[]>([]);
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<number, boolean>>({});
+  const targetTradeRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -71,13 +74,30 @@ export default function JournalDatePage() {
         fetch(`/api/trades?date=${dateStr}`),
         fetch(`/api/daily-summary/${dateStr}`),
       ]);
-      if (tradesRes.ok) setTrades(await tradesRes.json());
+      if (tradesRes.ok) {
+        const json = await tradesRes.json();
+        const tradesList: DbTrade[] = json.data ?? json;
+        setTrades(tradesList);
+
+        // Auto-expand trade matching the symbol query param
+        if (targetSymbol) {
+          const match = tradesList.find(t => t.symbol === targetSymbol);
+          if (match) setExpandedId(match.id);
+        }
+      }
       if (summaryRes.ok) setSummary(await summaryRes.json());
     } catch { }
     setLoading(false);
-  }, [dateStr]);
+  }, [dateStr, targetSymbol]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Scroll to the target trade once it's expanded and rendered
+  useEffect(() => {
+    if (expandedId && targetSymbol && targetTradeRef.current) {
+      targetTradeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [expandedId, targetSymbol, loading]);
 
   const updateTrade = async (id: number, updates: Record<string, string | null>) => {
     setSaving(prev => ({ ...prev, [id]: true }));
@@ -141,8 +161,9 @@ export default function JournalDatePage() {
         {trades.map(trade => {
           const isExpanded = expandedId === trade.id;
           const pnl = trade.pnl_dollar ?? 0;
+          const isTarget = trade.symbol === targetSymbol;
           return (
-            <div key={trade.id} className="card overflow-hidden">
+            <div key={trade.id} ref={isTarget ? targetTradeRef : undefined} className="card overflow-hidden">
               <button onClick={() => setExpandedId(isExpanded ? null : trade.id)} className="w-full p-5 flex items-center justify-between hover:bg-stone-50/50 transition-colors">
                 <div className="flex items-center gap-4">
                   <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-bold", trade.call_put === 'C' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>

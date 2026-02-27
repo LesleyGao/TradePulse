@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, getDay,
   format, addMonths, subMonths, isToday
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, BookOpen, ChevronRight as ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { parseOccSymbol } from '@/hooks/useTradeStats';
 
 interface GroupedTrade {
@@ -40,6 +41,17 @@ export function CalendarView({ trades }: CalendarViewProps) {
     return startOfMonth(new Date());
   });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [reviewedDates, setReviewedDates] = useState<Set<string>>(new Set());
+
+  // Fetch which dates have been journaled from Supabase
+  useEffect(() => {
+    fetch('/api/trades/reviewed-dates')
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.dates) setReviewedDates(new Set(json.dates));
+      })
+      .catch(() => {});
+  }, []);
 
   // Build day-level stats map from trades
   const dayStatsMap = useMemo(() => {
@@ -162,6 +174,7 @@ export function CalendarView({ trades }: CalendarViewProps) {
               stats={stats}
               isToday={today}
               isSelected={isSelected}
+              isReviewed={reviewedDates.has(dateStr)}
               onClick={() => stats && handleDayClick(dateStr)}
             />
           );
@@ -182,11 +195,12 @@ export function CalendarView({ trades }: CalendarViewProps) {
 
 // ── Day Cell ────────────────────────────────────────────────────────
 
-function DayCell({ day, stats, isToday: today, isSelected, onClick }: {
+function DayCell({ day, stats, isToday: today, isSelected, isReviewed, onClick }: {
   day: Date;
   stats?: DayStats;
   isToday: boolean;
   isSelected: boolean;
+  isReviewed: boolean;
   onClick: () => void;
 }) {
   const hasTrades = !!stats;
@@ -206,10 +220,15 @@ function DayCell({ day, stats, isToday: today, isSelected, onClick }: {
         ${isRed && !isSelected ? 'bg-rose-50/40' : ''}
       `}
     >
-      {/* Day number */}
-      <div className={`text-xs font-medium ${today ? 'text-blue-600 font-bold' : 'text-stone-400'}`}>
-        {format(day, 'd')}
-        {today && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle" />}
+      {/* Day number + reviewed icon */}
+      <div className="flex items-center justify-between">
+        <div className={`text-xs font-medium ${today ? 'text-blue-600 font-bold' : 'text-stone-400'}`}>
+          {format(day, 'd')}
+          {today && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-blue-500 align-middle" />}
+        </div>
+        {isReviewed && (
+          <BookOpen className="w-3 h-3 text-violet-400" />
+        )}
       </div>
 
       {hasTrades && (
@@ -235,6 +254,7 @@ function TradeDetailPanel({ date, stats, onClose }: {
   stats: DayStats;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const fmtDate = (() => {
     try {
       const [y, m, d] = date.split('-').map(Number);
@@ -282,7 +302,11 @@ function TradeDetailPanel({ date, stats, onClose }: {
                   : trade.symbol;
 
                 return (
-                  <tr key={`${trade.symbol}-${i}`} className="border-b border-stone-50 last:border-b-0 hover:bg-white/60 transition-colors">
+                  <tr
+                    key={`${trade.symbol}-${i}`}
+                    onClick={() => router.push(`/journal/${date}?symbol=${encodeURIComponent(trade.symbol)}`)}
+                    className="border-b border-stone-50 last:border-b-0 hover:bg-white/80 transition-colors cursor-pointer group"
+                  >
                     <td className="py-2.5 px-6 font-mono text-xs font-medium text-stone-700">{contractLabel}</td>
                     <td className="py-2.5 px-4 text-xs">
                       <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -294,7 +318,10 @@ function TradeDetailPanel({ date, stats, onClose }: {
                     <td className="py-2.5 px-4 text-right font-mono text-xs text-stone-600">{trade.quantity}</td>
                     <td className="py-2.5 px-4 text-right font-mono text-xs text-stone-600">${trade.price.toFixed(2)}</td>
                     <td className={`py-2.5 px-6 text-right font-mono text-sm font-bold ${trade.pnl > 0 ? 'text-emerald-600' : trade.pnl < 0 ? 'text-rose-600' : 'text-stone-500'}`}>
-                      {trade.pnl > 0 ? '+' : ''}{trade.pnl.toFixed(2)}
+                      <span className="flex items-center justify-end gap-2">
+                        {trade.pnl > 0 ? '+' : ''}{trade.pnl.toFixed(2)}
+                        <ArrowRight className="w-3.5 h-3.5 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </span>
                     </td>
                   </tr>
                 );
